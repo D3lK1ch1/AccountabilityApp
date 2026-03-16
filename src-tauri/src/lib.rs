@@ -5,7 +5,7 @@ use std::sync::Arc;
 use tauri::{
     menu::{Menu, MenuItem},
     tray::{MouseButton, MouseButtonState, TrayIconBuilder, TrayIconEvent},
-    AppHandle, Manager, State, WindowEvent,
+    AppHandle, LogicalSize, Manager, Size, State, WindowEvent,
 };
 use tokio::sync::Mutex;
 
@@ -146,6 +146,22 @@ async fn set_setting(state: State<'_, AppState>, key: String, value: String) -> 
 #[tauri::command]
 async fn get_setting(state: State<'_, AppState>, key: String) -> Result<Option<String>, String> {
     state.db.get_setting(&key).map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+async fn set_widget_expanded(app: AppHandle, expanded: bool) -> Result<(), String> {
+    let window = app
+        .get_webview_window("main")
+        .ok_or_else(|| "main window not found".to_string())?;
+
+    let width = 400.0;
+    let height = if expanded { 300.0 } else { 72.0 };
+
+    window
+        .set_size(Size::Logical(LogicalSize { width, height }))
+        .map_err(|e| e.to_string())?;
+
+    Ok(())
 }
 
 #[tauri::command]
@@ -322,6 +338,7 @@ pub fn run() {
             remove_blocked_app,
             set_setting,
             get_setting,
+            set_widget_expanded,
             toggle_window,
             show_dashboard,
             hide_to_tray,

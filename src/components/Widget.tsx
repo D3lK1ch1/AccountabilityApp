@@ -1,4 +1,5 @@
 import { useEffect } from 'react';
+import { invoke } from '@tauri-apps/api/core';
 import { getCurrentWindow } from '@tauri-apps/api/window';
 import { useAppStore } from '../store/useAppStore';
 import './Widget.css';
@@ -29,6 +30,12 @@ export function Widget() {
     refreshSessions,
     startTracking
   } = useAppStore();
+
+  useEffect(() => {
+    invoke('set_widget_expanded', { expanded: isExpanded }).catch((e) => {
+      console.error('Failed to resize widget window:', e);
+    });
+  }, [isExpanded]);
 
   useEffect(() => {
     startTracking();
