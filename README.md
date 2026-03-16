@@ -67,7 +67,7 @@
 ---
 
 ## Current Progress
-A widget showing app usage, such as Google, File Explorer, VSCode and any other app. Not able to show the tabs from Chrome used. Acts as a time tracker, but unsure how to show heavy use of data. Haven't stored into database for memories. When using it for a while, suddenly disappeared without warning. To work on.
+A widget showing app usage, and includes tabs from Chrome too. Acts as a time tracker, but unsure how to show heavy use of data. Haven't stored into database for memories. When using it for a while, suddenly disappeared without warning. To work on.
 
 
 Feedback is always welcomed, as I go through this ReadME and figure out what works and doesn't work.
