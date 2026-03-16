@@ -21,16 +21,24 @@ export function Widget() {
     isTracking, 
     currentApp, 
     stats, 
+    sessions,
     isExpanded, 
     setExpanded,
     toggleTracking,
     refreshStats,
+    refreshSessions,
     startTracking
   } = useAppStore();
 
   useEffect(() => {
     startTracking();
   }, []);
+
+  useEffect(() => {
+    if (isExpanded) {
+      refreshSessions();
+    }
+  }, [isExpanded, refreshSessions]);
 
   useEffect(() => {
     const interval = setInterval(() => {
@@ -41,6 +49,16 @@ export function Widget() {
     
     return () => clearInterval(interval);
   }, [isTracking, refreshStats]);
+
+  useEffect(() => {
+    const interval = setInterval(() => {
+      if (isTracking && isExpanded) {
+        refreshSessions();
+      }
+    }, 3000);
+
+    return () => clearInterval(interval);
+  }, [isTracking, isExpanded, refreshSessions]);
 
   const handleDragStart = (e: React.MouseEvent) => {
     if ((e.target as HTMLElement).closest('button')) return;
@@ -53,6 +71,7 @@ export function Widget() {
 
   const totalTime = stats?.total_tracked_seconds ?? 0;
   const topApp = stats?.most_used_app ?? 'No data yet';
+  const recentSessions = sessions.slice(0, 8);
 
   return (
     <div className={`widget ${isExpanded ? 'expanded' : ''}`}>
@@ -105,6 +124,23 @@ export function Widget() {
               )}
               {currentApp || 'None'}
             </div>
+          </div>
+
+          <div className="sessions-list">
+            <div className="sessions-header">Recent Sessions</div>
+            {recentSessions.length > 0 ? (
+              recentSessions.map((s) => (
+                <div
+                  key={`${s.id ?? 'no-id'}-${s.start_time}-${s.app_name}`}
+                  className="session-item"
+                >
+                  <span className="session-app">{s.app_name}</span>
+                  <span className="session-time">{formatDuration(s.duration_seconds)}</span>
+                </div>
+              ))
+            ) : (
+              <div className="sessions-empty">No sessions yet</div>
+            )}
           </div>
 
           {stats?.usage_by_app && stats.usage_by_app.length > 0 && (
