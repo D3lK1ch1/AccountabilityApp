@@ -21,6 +21,7 @@ export function Widget() {
   const { 
     isTracking, 
     currentApp, 
+    currentWindowTitle,
     stats, 
     sessions,
     isExpanded, 
@@ -79,6 +80,8 @@ export function Widget() {
   const totalTime = stats?.total_tracked_seconds ?? 0;
   const topApp = stats?.most_used_app ?? 'No data yet';
   const recentSessions = sessions.slice(0, 8);
+  const isChrome = (currentApp ?? '').toLowerCase().includes('chrome');
+  const chromeTabTitle = isChrome ? (currentWindowTitle ?? null) : null;
 
   return (
     <div className={`widget ${isExpanded ? 'expanded' : ''}`}>
@@ -131,6 +134,11 @@ export function Widget() {
               )}
               {currentApp || 'None'}
             </div>
+            {chromeTabTitle && (
+              <div className="activity-subvalue" title={chromeTabTitle}>
+                {chromeTabTitle}
+              </div>
+            )}
           </div>
 
           <div className="sessions-list">
@@ -141,7 +149,14 @@ export function Widget() {
                   key={`${s.id ?? 'no-id'}-${s.start_time}-${s.app_name}`}
                   className="session-item"
                 >
-                  <span className="session-app">{s.app_name}</span>
+                  <div className="session-left">
+                    <span className="session-app">{s.app_name}</span>
+                    {s.window_title && (
+                      <span className="session-title" title={s.window_title}>
+                        {s.window_title}
+                      </span>
+                    )}
+                  </div>
                   <span className="session-time">{formatDuration(s.duration_seconds)}</span>
                 </div>
               ))
@@ -173,7 +188,9 @@ export function Widget() {
           <div className="compact-stats">
             <span className={`status-dot ${isTracking ? 'active' : ''}`}></span>
             <span className="compact-time">{formatDuration(totalTime)}</span>
-            <span className="compact-app">{currentApp || '-'}</span>
+            <span className="compact-app" title={chromeTabTitle ?? currentApp ?? ''}>
+              {chromeTabTitle || currentApp || '-'}
+            </span>
           </div>
         </div>
       )}
