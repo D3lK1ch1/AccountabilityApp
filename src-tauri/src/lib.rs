@@ -155,7 +155,7 @@ async fn set_widget_expanded(app: AppHandle, expanded: bool) -> Result<(), Strin
         .ok_or_else(|| "main window not found".to_string())?;
 
     let width = 400.0;
-    let height = if expanded { 300.0 } else { 72.0 };
+    let height = if expanded { 300.0 } else { 100.0 };
 
     window
         .set_size(Size::Logical(LogicalSize { width, height }))

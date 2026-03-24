@@ -286,3 +286,160 @@ impl Database {
         }
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::fs;
+    use tempfile::TempDir;
+
+    fn create_test_db() -> (Database, TempDir) {
+        let temp_dir = TempDir::new().unwrap();
+        let db = Database::new(temp_dir.path().to_path_buf()).unwrap();
+        (db, temp_dir)
+    }
+
+    #[test]
+    fn test_insert_and_get_session() {
+        let (db, _dir) = create_test_db();
+
+        let session = AppSession {
+            id: None,
+            app_name: "TestApp".to_string(),
+            window_title: Some("Test Window".to_string()),
+            start_time: 1000,
+            end_time: None,
+            duration_seconds: 0,
+        };
+
+        let id = db.insert_session(&session).unwrap();
+        assert!(id > 0);
+
+        let sessions = db.get_sessions_today().unwrap();
+        assert_eq!(sessions.len(), 1);
+        assert_eq!(sessions[0].app_name, "TestApp");
+    }
+
+    #[test]
+    fn test_update_session_end() {
+        let (db, _dir) = create_test_db();
+
+        let session = AppSession {
+            id: None,
+            app_name: "TestApp".to_string(),
+            window_title: None,
+            start_time: 1000,
+            end_time: None,
+            duration_seconds: 0,
+        };
+
+        let id = db.insert_session(&session).unwrap();
+        db.update_session_end(id, 2000, 1000).unwrap();
+
+        let sessions = db.get_sessions_today().unwrap();
+        assert_eq!(sessions[0].duration_seconds, 1000);
+        assert_eq!(sessions[0].end_time, Some(2000));
+    }
+
+    #[test]
+    fn test_blocked_apps_crud() {
+        let (db, _dir) = create_test_db();
+
+        let app = BlockedApp {
+            id: None,
+            app_name: "Discord".to_string(),
+            block_duration_minutes: 10,
+            enabled: true,
+        };
+
+        let id = db.add_blocked_app(&app).unwrap();
+        assert!(id > 0);
+
+        let apps = db.get_blocked_apps().unwrap();
+        assert_eq!(apps.len(), 1);
+        assert_eq!(apps[0].app_name, "Discord");
+
+        db.remove_blocked_app("Discord").unwrap();
+
+        let apps = db.get_blocked_apps().unwrap();
+        assert!(apps.is_empty());
+    }
+
+    #[test]
+    fn test_settings_crud() {
+        let (db, _dir) = create_test_db();
+
+        db.set_setting("theme", "dark").unwrap();
+        db.set_setting("language", "en").unwrap();
+
+        assert_eq!(db.get_setting("theme").unwrap(), Some("dark".to_string()));
+        assert_eq!(db.get_setting("language").unwrap(), Some("en".to_string()));
+        assert_eq!(db.get_setting("nonexistent").unwrap(), None);
+
+        db.set_setting("theme", "light").unwrap();
+        assert_eq!(db.get_setting("theme").unwrap(), Some("light".to_string()));
+    }
+
+    #[test]
+    fn test_app_usage_summary() {
+        let (db, _dir) = create_test_db();
+
+        let session1 = AppSession {
+            id: None,
+            app_name: "Chrome".to_string(),
+            window_title: None,
+            start_time: chrono::Utc::now().timestamp(),
+            end_time: None,
+            duration_seconds: 100,
+        };
+        let session2 = AppSession {
+            id: None,
+            app_name: "Chrome".to_string(),
+            window_title: None,
+            start_time: chrono::Utc::now().timestamp(),
+            end_time: None,
+            duration_seconds: 200,
+        };
+        let session3 = AppSession {
+            id: None,
+            app_name: "VSCode".to_string(),
+            window_title: None,
+            start_time: chrono::Utc::now().timestamp(),
+            end_time: None,
+            duration_seconds: 50,
+        };
+
+        db.insert_session(&session1).unwrap();
+        db.insert_session(&session2).unwrap();
+        db.insert_session(&session3).unwrap();
+
+        let summary = db.get_app_usage_summary().unwrap();
+        assert_eq!(summary.len(), 2);
+
+        assert_eq!(summary[0].0, "Chrome");
+        assert_eq!(summary[0].1, 300);
+
+        assert_eq!(summary[1].0, "VSCode");
+        assert_eq!(summary[1].1, 50);
+    }
+
+    #[test]
+    fn test_total_tracked_time() {
+        let (db, _dir) = create_test_db();
+
+        assert_eq!(db.get_total_tracked_time_today().unwrap(), 0);
+
+        let session = AppSession {
+            id: None,
+            app_name: "Chrome".to_string(),
+            window_title: None,
+            start_time: chrono::Utc::now().timestamp(),
+            end_time: None,
+            duration_seconds: 500,
+        };
+
+        db.insert_session(&session).unwrap();
+
+        assert_eq!(db.get_total_tracked_time_today().unwrap(), 500);
+    }
+}
