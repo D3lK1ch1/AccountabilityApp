@@ -90,7 +90,6 @@ export function Widget() {
         onMouseDown={handleDragStart}
       >
         <div className="header-left">
-          <span className="app-icon">📊</span>
           <span className="title">Accountability</span>
         </div>
         <div className="header-right">
