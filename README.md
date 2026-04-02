@@ -3,6 +3,9 @@
 **Type:** Cross-platform Desktop/Mobile Application  
 **Core Feature:** Tracks user app/browser usage, sleep patterns monitors, and provides an AI therapist chatbot to help break bad habits
 
+## Getting Started
+Run this with 'npm run tauri dev'
+
 ## Tech Stack Recommendations
 
 | Component | Recommended Options |
@@ -10,7 +13,7 @@
 | **Framework** | Tauri + React |
 | **State Management** | Zustand |
 | **Backend** | Rust |
-| **Database** | PostgreSQL |
+| **Database** | SQLLite |
 | **AI Integration** |local LLM (Ollama) |
 | **Activity Tracking** | See Platform-Specific APIs below |
 
