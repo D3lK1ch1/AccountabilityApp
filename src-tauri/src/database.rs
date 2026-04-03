@@ -213,7 +213,7 @@ impl Database {
             .timestamp();
 
         let total: i64 = conn.query_row(
-            "SELECT COALESCE(SUM(duration_seconds), 0) FROM app_sessions WHERE start_time >= ?1",
+            "SELECT COALESCE(SUM(duration_seconds), 0) FROM app_sessions WHERE end_time is NULL AND start_time >= ?1",
             [today_start],
             |row| row.get(0),
         )?;

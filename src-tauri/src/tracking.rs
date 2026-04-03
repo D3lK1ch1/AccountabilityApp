@@ -42,6 +42,9 @@ impl ActivityTracker {
 
                 match window_info {
                     Some(info) => {
+                        if info.app_name == "Accountability App" {
+                            continue;
+                        }
                         if let Some((session_id, session)) = &current_session {
                             if session.app_name != info.app_name {
                                 let end_time = Utc::now().timestamp();
@@ -77,7 +80,7 @@ impl ActivityTracker {
                                 app_name: info.app_name.clone(),
                                 window_title: Some(info.window_title.clone()),
                                 start_time: Utc::now().timestamp(),
-                                end_time: None,
+                                end_time:  None,
                                 duration_seconds: 0,
                             };
 
