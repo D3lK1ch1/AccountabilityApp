@@ -59,11 +59,12 @@ async fn get_tracker_status(state: State<'_, AppState>) -> Result<TrackerStatus,
     if let Some(tracker) = tracker_lock.as_ref() {
         let is_tracking = tracker.is_running();
         let current = tracker.get_current_activity();
-        
+        let filtered = current.filter(|c| c.app_name != "Accountability App");
+
         Ok(TrackerStatus {
             is_tracking,
-            current_app: current.as_ref().map(|c| c.app_name.clone()),
-            current_window_title: current.as_ref().map(|c| c.window_title.clone()),
+            current_app: filtered.as_ref().map(|c| c.app_name.clone()),
+            current_window_title: filtered.as_ref().map(|c| c.window_title.clone()),
         })
     } else {
         Ok(TrackerStatus {
