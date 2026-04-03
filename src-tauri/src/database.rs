@@ -224,6 +224,28 @@ impl Database {
         Ok(total)
     }
 
+    pub fn get_tracked_time_per_app(&self, app_name: &str) -> DbResult<i64> {
+        let conn = self.conn.lock().map_err(|_| DatabaseError::Lock)?;
+
+        let today_start = Utc::now()
+            .date_naive()
+            .and_hms_opt(0, 0, 0)
+            .unwrap()
+            .and_utc()
+            .timestamp();
+
+        let app: i64 = conn.query_row(
+            "SELECT COALESCE (SUM (CASE WHEN end_time IS NULL 
+            THEN (strftime('%s', 'now') - start_time) ELSE duration_seconds END), 0)
+             FROM app_sessions
+             WHERE start_time >= ?1 AND app_name = ?2",
+            params! [today_start, app_name],
+            |row| row.get(0),  
+        )?;
+
+        Ok(app)
+    }
+
     pub fn add_blocked_app(&self, app: &BlockedApp) -> DbResult<i64> {
         let conn = self.conn.lock().map_err(|_| DatabaseError::Lock)?;
 

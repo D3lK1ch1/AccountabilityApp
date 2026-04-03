@@ -115,6 +115,11 @@ async fn get_sessions_today(state: State<'_, AppState>) -> Result<Vec<AppSession
 }
 
 #[tauri::command]
+async fn get_tracked_time_per_app(state: State<'_, AppState>, app_name: String) -> Result<i64, String> {
+    state.db.get_tracked_time_per_app(&app_name).map_err(|e| e.to_string())
+}
+
+#[tauri::command]
 async fn add_blocked_app(
     state: State<'_, AppState>,
     app_name: String,
@@ -334,6 +339,7 @@ pub fn run() {
             get_tracker_status,
             get_dashboard_stats,
             get_sessions_today,
+            get_tracked_time_per_app,
             add_blocked_app,
             get_blocked_apps,
             remove_blocked_app,
