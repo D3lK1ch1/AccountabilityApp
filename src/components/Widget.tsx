@@ -82,6 +82,9 @@ export function Widget() {
   const recentSessions = sessions.slice(0, 8);
   const isChrome = (currentApp ?? '').toLowerCase().includes('chrome');
   const chromeTabTitle = isChrome ? (currentWindowTitle ?? null) : null;
+  const isVisualStudio = (currentApp ?? '').toLowerCase().includes('visual studio');
+  const visualStudioTabTitle = isVisualStudio ? (currentWindowTitle ?? null) : null;
+
 
   return (
     <div className={`widget ${isExpanded ? 'expanded' : ''}`}>
@@ -138,6 +141,11 @@ export function Widget() {
                 {chromeTabTitle}
               </div>
             )}
+            {visualStudioTabTitle && (
+              <div className="activity-subvalue" title={visualStudioTabTitle}>
+                {visualStudioTabTitle}
+              </div>
+            )}
           </div>
 
           <div className="sessions-list">
@@ -189,6 +197,9 @@ export function Widget() {
             <span className="compact-time">{formatDuration(totalTime)}</span>
             <span className="compact-app" title={chromeTabTitle ?? currentApp ?? ''}>
               {chromeTabTitle || currentApp || '-'}
+            </span>
+            <span className="compact-app" title={visualStudioTabTitle ?? currentApp ?? ''}>
+              {visualStudioTabTitle || currentApp || '-'}
             </span>
           </div>
         </div>
