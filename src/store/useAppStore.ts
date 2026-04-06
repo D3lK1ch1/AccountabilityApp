@@ -40,6 +40,7 @@ interface AppStore {
   isTracking: boolean;
   currentApp: string | null;
   currentWindowTitle: string | null;
+  currentAppSeconds: number;
   stats: DashboardStats | null;
   sessions: AppSession[];
   blockedApps: BlockedApp[];
@@ -61,6 +62,7 @@ export const useAppStore = create<AppStore>((set, get) => ({
   isTracking: false,
   currentApp: null,
   currentWindowTitle: null,
+  currentAppSeconds: 0,
   stats: null,
   sessions: [],
   blockedApps: [],
@@ -72,6 +74,7 @@ export const useAppStore = create<AppStore>((set, get) => ({
       await invoke('start_tracking');
       set({ isTracking: true });
       get().refreshStats();
+      get().refreshSessions();
     } catch (e) {
       console.error('Failed to start tracking:', e);
     }
@@ -90,10 +93,12 @@ export const useAppStore = create<AppStore>((set, get) => ({
     try {
       const stats = await invoke<DashboardStats>('get_dashboard_stats');
       const status = await invoke<TrackerStatus>('get_tracker_status');
+      const time = await invoke<number>('get_tracked_time_per_app', { appName: status.current_app});
       set({ 
         stats, 
-        currentApp: status.current_app, 
-        currentWindowTitle: status.current_window_title 
+        currentApp: status.current_app,
+        currentAppSeconds: status.current_app ? time : 0,
+        currentWindowTitle: status.current_window_title,
       });
     } catch (e) {
       console.error('Failed to refresh stats:', e);
