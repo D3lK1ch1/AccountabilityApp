@@ -21,6 +21,7 @@ export function Widget() {
   const { 
     isTracking, 
     currentApp, 
+    currentAppSeconds,
     currentWindowTitle,
     stats, 
     sessions,
@@ -60,13 +61,13 @@ export function Widget() {
 
   useEffect(() => {
     const interval = setInterval(() => {
-      if (isTracking && isExpanded) {
+      if (isTracking) {
         refreshSessions();
       }
     }, 3000);
 
     return () => clearInterval(interval);
-  }, [isTracking, isExpanded, refreshSessions]);
+  }, [isTracking, refreshSessions]);
 
   const handleDragStart = (e: React.MouseEvent) => {
     if ((e.target as HTMLElement).closest('button')) return;
@@ -76,8 +77,10 @@ export function Widget() {
   const handleExpand = () => {
     setExpanded(!isExpanded);
   };
-
-  const totalTime = stats?.total_tracked_seconds ?? 0;
+  
+  const currentSession = sessions.find(s => s.end_time === null && s.app_name === currentApp);
+  const currentSessionSeconds = currentSession ? Math.floor(Date.now() / 1000) - currentSession.start_time : 0;
+  const totalTime = currentSessionSeconds ?? 0;
   const topApp = stats?.most_used_app ?? 'No data yet';
   const recentSessions = sessions.slice(0, 8);
   const isChrome = (currentApp ?? '').toLowerCase().includes('chrome');
@@ -117,7 +120,7 @@ export function Widget() {
         <div className="widget-content">
           <div className="stats-grid">
             <div className="stat-card">
-              <div className="stat-label">Total Today</div>
+              <div className="stat-label">Current App</div>
               <div className="stat-value">{formatDuration(totalTime)}</div>
             </div>
             <div className="stat-card">
@@ -164,7 +167,7 @@ export function Widget() {
                       </span>
                     )}
                   </div>
-                  <span className="session-time">{formatDuration(s.duration_seconds)}</span>
+                  <span className="session-time">{formatDuration(s.end_time ? s.duration_seconds : Math.floor(Date.now() / 1000) - s.start_time)}</span>
                 </div>
               ))
             ) : (
