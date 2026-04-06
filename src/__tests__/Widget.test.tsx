@@ -19,6 +19,7 @@ const mockStore = {
   isTracking: false,
   currentApp: null,
   currentWindowTitle: null,
+  currentAppSeconds: 0,
   stats: null,
   sessions: [],
   blockedApps: [],
@@ -45,7 +46,7 @@ describe('Widget', () => {
     render(<Widget />);
     
     expect(screen.getByText('Accountability')).toBeInTheDocument();
-    expect(screen.getByText('Total Today')).toBeInTheDocument();
+    expect(screen.getByText('Current App')).toBeInTheDocument();
     expect(screen.getByText('Most Used')).toBeInTheDocument();
     expect(screen.getByText('Current Activity')).toBeInTheDocument();
   });
@@ -118,7 +119,7 @@ describe('Widget', () => {
         id: 1,
         app_name: 'Chrome',
         window_title: 'Google',
-        start_time: Date.now(),
+        start_time: Math.floor(Date.now() / 1000) - 120,
         end_time: null,
         duration_seconds: 120,
       },
