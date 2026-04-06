@@ -67,10 +67,8 @@ Run this with 'npm run tauri dev'
 4. **Permissions:** Request only necessary permissions
 5. **Data Minimization:** Don't collect more than needed
 
+To do before packaging it as a beta version into app production.
 ---
-
-## Current Progress
-A widget showing app usage, and includes tabs from Chrome too. Acts as a time tracker, but unsure how to show heavy use of data. Haven't stored into database for memories. When using it for a while, suddenly disappeared without warning. To work on.
 
 
 Feedback is always welcomed, as I go through this ReadME and figure out what works and doesn't work.
