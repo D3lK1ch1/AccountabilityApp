@@ -21,6 +21,9 @@ struct AppState {
 
 #[tauri::command]
 async fn start_tracking(state: State<'_, AppState>) -> Result<(), String> {
+    if state.tracker.lock().await.is_some() {
+        return Ok(()); // Already tracking
+    }
     let tracker = ActivityTracker::new(state.db.clone(), 3);
     let (tx, _rx) = tokio::sync::mpsc::channel::<()>(1);
     
@@ -29,6 +32,7 @@ async fn start_tracking(state: State<'_, AppState>) -> Result<(), String> {
         *stop_tx = Some(tx.clone());
     }
 
+    state.db.end_crash_session().await.map_err(|e| e.to_string())?;
     tracker.start(tx);
 
     let mut tracker_lock = state.tracker.lock().await;
@@ -209,7 +213,7 @@ fn setup_tray(app: &AppHandle) -> Result<(), Box<dyn std::error::Error>> {
 
     let icon = tauri::image::Image::from_bytes(include_bytes!("../icons/icon.png"))?;
 
-    let _ = TrayIconBuilder::new()
+    let _ = TrayIconBuilder::with_id("main_tray")
         .icon(icon)
         .menu(&menu)
         .tooltip("Accountability App")
@@ -226,11 +230,18 @@ fn setup_tray(app: &AppHandle) -> Result<(), Box<dyn std::error::Error>> {
                         let _ = window.hide();
                     }
                 }
+
                 "quit" => {
+                    let state = app.state::<AppState>();
+                    if let Ok(guard) = state.tracker.try_lock() {
+                        if let Some(tracker) = guard.as_ref() {
+                            tracker.stop();
+                        }
+                    }
                     app.exit(0);
                 }
                 _ => {}
-            }
+            }   
         })
         .on_tray_icon_event(|tray, event| {
             if let TrayIconEvent::Click {
