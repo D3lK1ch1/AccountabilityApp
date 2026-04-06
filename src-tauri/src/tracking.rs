@@ -42,20 +42,37 @@ impl ActivityTracker {
 
                 match window_info {
                     Some(info) => {
-                        if info.app_name == "Accountability App" {
-                            continue;
-                        }
-                        if let Some((session_id, session)) = &current_session {
-                            if session.app_name != info.app_name {
-                                let end_time = Utc::now().timestamp();
-                                let duration = end_time - session.start_time;
+                        if info.app_name != "Accountability App" {
+                            if let Some((session_id, session)) = &current_session {
+                                if session.app_name != info.app_name {
+                                    let end_time = Utc::now().timestamp();
+                                    let duration = end_time - session.start_time;
 
-                                if let Err(e) =
-                                    db.update_session_end(*session_id, end_time, duration)
-                                {
-                                    log::error!("Failed to update session: {}", e);
+                                    if let Err(e) =
+                                        db.update_session_end(*session_id, end_time, duration)
+                                    {
+                                        log::error!("Failed to update session: {}", e);
+                                    }
+
+                                    let new_session = AppSession {
+                                        id: None,
+                                        app_name: info.app_name.clone(),
+                                        window_title: Some(info.window_title.clone()),
+                                        start_time: Utc::now().timestamp(),
+                                        end_time: None,
+                                        duration_seconds: 0,
+                                    };
+
+                                    match db.insert_session(&new_session) {
+                                        Ok(new_id) => {
+                                            current_session = Some((new_id, new_session));
+                                        }
+                                        Err(e) => {
+                                            log::error!("Failed to insert new session: {}", e);
+                                        }
+                                    }
                                 }
-
+                            } else {
                                 let new_session = AppSession {
                                     id: None,
                                     app_name: info.app_name.clone(),
@@ -66,30 +83,12 @@ impl ActivityTracker {
                                 };
 
                                 match db.insert_session(&new_session) {
-                                    Ok(new_id) => {
-                                        current_session = Some((new_id, new_session));
+                                    Ok(id) => {
+                                        current_session = Some((id, new_session));
                                     }
                                     Err(e) => {
-                                        log::error!("Failed to insert new session: {}", e);
+                                        log::error!("Failed to insert session: {}", e);
                                     }
-                                }
-                            }
-                        } else {
-                            let new_session = AppSession {
-                                id: None,
-                                app_name: info.app_name.clone(),
-                                window_title: Some(info.window_title.clone()),
-                                start_time: Utc::now().timestamp(),
-                                end_time:  None,
-                                duration_seconds: 0,
-                            };
-
-                            match db.insert_session(&new_session) {
-                                Ok(id) => {
-                                    current_session = Some((id, new_session));
-                                }
-                                Err(e) => {
-                                    log::error!("Failed to insert session: {}", e);
                                 }
                             }
                         }
@@ -122,6 +121,7 @@ impl ActivityTracker {
             let _ = stop_tx.send(());
         });
     }
+
 
     pub fn stop(&self) {
         self.is_running
