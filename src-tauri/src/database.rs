@@ -186,11 +186,14 @@ impl Database {
             .timestamp();
 
         let mut stmt = conn.prepare(
-            "SELECT app_name, SUM(duration_seconds) as total_duration
-             FROM app_sessions
-             WHERE start_time >= ?1
-             GROUP BY app_name
-             ORDER BY total_duration DESC",
+            "SELECT app_name, SUM(CASE WHEN            
+            end_time IS NULL THEN (strftime('%s', 'now') - start_time)
+            ELSE duration_seconds END) 
+            as total_duration
+            FROM app_sessions
+            WHERE start_time >= ?1
+            GROUP BY app_name
+            ORDER BY total_duration DESC",
         )?;
 
         let summary = stmt
@@ -244,6 +247,21 @@ impl Database {
         )?;
 
         Ok(app)
+    }
+
+        pub async fn end_crash_session(&self) -> DbResult<()> {
+        let conn = self.conn.lock().map_err(|_| DatabaseError::Lock)?;
+
+        let now = Utc::now().timestamp();
+
+        conn.execute(
+            "UPDATE app_sessions
+             SET end_time = ?1, duration_seconds = (?1 - start_time)
+             WHERE end_time IS NULL AND start_time <= ?1",
+            [now],
+        )?;
+
+        Ok(())
     }
 
     pub fn add_blocked_app(&self, app: &BlockedApp) -> DbResult<i64> {
@@ -332,7 +350,7 @@ mod tests {
             id: None,
             app_name: "TestApp".to_string(),
             window_title: Some("Test Window".to_string()),
-            start_time: 1000,
+            start_time: Utc::now().timestamp(),
             end_time: None,
             duration_seconds: 0,
         };
@@ -353,7 +371,7 @@ mod tests {
             id: None,
             app_name: "TestApp".to_string(),
             window_title: None,
-            start_time: 1000,
+            start_time: Utc::now().timestamp(),
             end_time: None,
             duration_seconds: 0,
         };
@@ -409,28 +427,30 @@ mod tests {
     fn test_app_usage_summary() {
         let (db, _dir) = create_test_db();
 
+        let now = chrono::Utc::now().timestamp();
+
         let session1 = AppSession {
             id: None,
             app_name: "Chrome".to_string(),
             window_title: None,
-            start_time: chrono::Utc::now().timestamp(),
-            end_time: None,
+            start_time: now,
+            end_time: Some(now + 100),
             duration_seconds: 100,
         };
         let session2 = AppSession {
             id: None,
             app_name: "Chrome".to_string(),
             window_title: None,
-            start_time: chrono::Utc::now().timestamp(),
-            end_time: None,
+            start_time: now,
+            end_time: Some (now + 200),
             duration_seconds: 200,
         };
         let session3 = AppSession {
             id: None,
             app_name: "VSCode".to_string(),
             window_title: None,
-            start_time: chrono::Utc::now().timestamp(),
-            end_time: None,
+            start_time: now,
+            end_time: Some(now + 50),
             duration_seconds: 50,
         };
 
@@ -451,15 +471,15 @@ mod tests {
     #[test]
     fn test_total_tracked_time() {
         let (db, _dir) = create_test_db();
-
+        let now = chrono::Utc::now().timestamp();
         assert_eq!(db.get_total_tracked_time_today().unwrap(), 0);
 
         let session = AppSession {
             id: None,
             app_name: "Chrome".to_string(),
             window_title: None,
-            start_time: chrono::Utc::now().timestamp(),
-            end_time: None,
+            start_time: now,
+            end_time: Some(now + 500),
             duration_seconds: 500,
         };
 
