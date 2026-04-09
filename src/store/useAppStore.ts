@@ -46,13 +46,16 @@ interface AppStore {
   blockedApps: BlockedApp[];
   isExpanded: boolean;
   isLoading: boolean;
-  
+  consentGiven: boolean | null;
+  checkConsent: () => Promise<void>;
+
   startTracking: () => Promise<void>;
   stopTracking: () => Promise<void>;
   refreshStats: () => Promise<void>;
   refreshSessions: () => Promise<void>;
   toggleTracking: () => Promise<void>;
   setExpanded: (expanded: boolean) => void;
+  clearAllSessions: () => Promise<void>;
   addBlockedApp: (appName: string, duration: number) => Promise<void>;
   removeBlockedApp: (appName: string) => Promise<void>;
   refreshBlockedApps: () => Promise<void>;
@@ -68,6 +71,22 @@ export const useAppStore = create<AppStore>((set, get) => ({
   blockedApps: [],
   isExpanded: true,
   isLoading: false,
+  consentGiven: null,
+
+  checkConsent: async () => {
+    try {
+      const consent = await invoke<string | null>('get_setting', { key: 'consent_given' }); 
+      if  (consent === 'true') {
+        set({ consentGiven: true });
+      } else {
+        set({ consentGiven: false });
+      }
+    } catch (e) {
+      console.error('Failed to check consent:', e);
+    }
+  },
+
+
 
   startTracking: async () => {
     try {
@@ -128,6 +147,14 @@ export const useAppStore = create<AppStore>((set, get) => ({
     if (expanded) {
       get().refreshStats();
       get().refreshSessions();
+    }
+  },
+
+  clearAllSessions: async () => {
+    try {
+      await invoke('clear_all_sessions');
+    } catch (e) {
+      console.error('Failed to clear all sessions:', e);
     }
   },
 
