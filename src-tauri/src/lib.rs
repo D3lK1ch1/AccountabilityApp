@@ -19,6 +19,14 @@ struct AppState {
     stop_tracker_tx: Arc<Mutex<Option<tokio::sync::mpsc::Sender<()>>>>,
 }
 
+fn db_err(e: database::DatabaseError) -> String {
+    match e {
+        database::DatabaseError::Sqlite(_) => "Failed to load data. Please restart app".to_string(),
+        database::DatabaseError::Lock => "App is busy, please try again.".to_string(),
+        database::DatabaseError::Io(_) => "Could not access app storage.".to_string(),
+    }
+}
+
 #[tauri::command]
 async fn start_tracking(state: State<'_, AppState>) -> Result<(), String> {
     if state.tracker.lock().await.is_some() {
@@ -83,9 +91,9 @@ async fn get_tracker_status(state: State<'_, AppState>) -> Result<TrackerStatus,
 async fn get_dashboard_stats(state: State<'_, AppState>) -> Result<DashboardStats, String> {
     let db = state.db.clone();
     
-    let sessions = db.get_sessions_today().map_err(|e| e.to_string())?;
-    let total = db.get_total_tracked_time_today().map_err(|e| e.to_string())?;
-    let summary = db.get_app_usage_summary().map_err(|e| e.to_string())?;
+    let sessions = db.get_sessions_today().map_err(db_err)?;
+    let total = db.get_total_tracked_time_today().map_err(db_err)?;
+    let summary = db.get_app_usage_summary().map_err(db_err)?;
     
     let usage_by_app: Vec<UsageData> = summary
         .into_iter()
@@ -115,12 +123,23 @@ async fn get_dashboard_stats(state: State<'_, AppState>) -> Result<DashboardStat
 
 #[tauri::command]
 async fn get_sessions_today(state: State<'_, AppState>) -> Result<Vec<AppSession>, String> {
-    state.db.get_sessions_today().map_err(|e| e.to_string())
+    state.db.get_sessions_today().map_err(db_err)
 }
 
 #[tauri::command]
 async fn get_tracked_time_per_app(state: State<'_, AppState>, app_name: String) -> Result<i64, String> {
-    state.db.get_tracked_time_per_app(&app_name).map_err(|e| e.to_string())
+    state.db.get_tracked_time_per_app(&app_name).map_err(db_err)
+}
+
+#[tauri::command]
+async fn clear_all_sessions(state: State<'_, AppState>) -> Result<(), String> {
+    state.db.delete_all_sessions().map_err(db_err)
+}
+
+#[tauri::command]
+async fn quit_app(app: AppHandle) -> Result<(), String> {
+    app.exit(0);
+    Ok(())
 }
 
 #[tauri::command]
@@ -135,27 +154,27 @@ async fn add_blocked_app(
         block_duration_minutes,
         enabled: true,
     };
-    state.db.add_blocked_app(&app).map_err(|e| e.to_string())
+    state.db.add_blocked_app(&app).map_err(db_err)
 }
 
 #[tauri::command]
 async fn get_blocked_apps(state: State<'_, AppState>) -> Result<Vec<BlockedApp>, String> {
-    state.db.get_blocked_apps().map_err(|e| e.to_string())
+    state.db.get_blocked_apps().map_err(db_err)
 }
 
 #[tauri::command]
 async fn remove_blocked_app(state: State<'_, AppState>, app_name: String) -> Result<(), String> {
-    state.db.remove_blocked_app(&app_name).map_err(|e| e.to_string())
+    state.db.remove_blocked_app(&app_name).map_err(db_err)
 }
 
 #[tauri::command]
 async fn set_setting(state: State<'_, AppState>, key: String, value: String) -> Result<(), String> {
-    state.db.set_setting(&key, &value).map_err(|e| e.to_string())
+    state.db.set_setting(&key, &value).map_err(db_err)
 }
 
 #[tauri::command]
 async fn get_setting(state: State<'_, AppState>, key: String) -> Result<Option<String>, String> {
-    state.db.get_setting(&key).map_err(|e| e.to_string())
+    state.db.get_setting(&key).map_err(db_err)
 }
 
 #[tauri::command]
@@ -351,6 +370,8 @@ pub fn run() {
             get_dashboard_stats,
             get_sessions_today,
             get_tracked_time_per_app,
+            clear_all_sessions,
+            quit_app,
             add_blocked_app,
             get_blocked_apps,
             remove_blocked_app,
