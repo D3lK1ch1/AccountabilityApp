@@ -21,7 +21,6 @@ export function Widget() {
   const { 
     isTracking, 
     currentApp, 
-    currentAppSeconds,
     currentWindowTitle,
     stats, 
     sessions,
@@ -30,7 +29,8 @@ export function Widget() {
     toggleTracking,
     refreshStats,
     refreshSessions,
-    startTracking
+    startTracking,
+    clearAllSessions
   } = useAppStore();
 
   useEffect(() => {
@@ -112,6 +112,28 @@ export function Widget() {
             title={isExpanded ? 'Collapse' : 'Expand'}
           >
             {isExpanded ? '▼' : '▲'}
+          </button>
+
+          <button 
+            className="quit-btn"
+            onClick={(e) => { e.stopPropagation(); invoke('quit_app'); }}
+            title="Quit app"
+          >
+            ✖
+          </button>
+          <button 
+            className="clear-btn"
+            onClick={(e) => { 
+              e.stopPropagation(); 
+              if (confirm('Clear all data? This cannot be undone.')) {
+                clearAllSessions();
+                refreshSessions();
+                refreshStats();
+              }
+            }}
+            title="Clear all data"
+          >
+            🗑
           </button>
         </div>
       </div>
