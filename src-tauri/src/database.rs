@@ -205,6 +205,14 @@ impl Database {
         Ok(summary)
     }
 
+    pub fn delete_all_sessions(&self) -> DbResult<()> {
+        let conn = self.conn.lock().map_err(|_| DatabaseError::Lock)?;
+
+        conn.execute("DELETE FROM app_sessions", [])?;
+
+        Ok(())
+    }
+
     pub fn get_total_tracked_time_today(&self) -> DbResult<i64> {
         let conn = self.conn.lock().map_err(|_| DatabaseError::Lock)?;
 
