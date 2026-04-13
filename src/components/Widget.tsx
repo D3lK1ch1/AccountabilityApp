@@ -1,4 +1,5 @@
 import { useEffect } from 'react';
+import { useState } from 'react';
 import { invoke } from '@tauri-apps/api/core';
 import { getCurrentWindow } from '@tauri-apps/api/window';
 import { useAppStore } from '../store/useAppStore';
@@ -33,6 +34,8 @@ export function Widget() {
     stopTracking,
     clearAllSessions
   } = useAppStore();
+
+  const [show,setShow] = useState(false);
 
   useEffect(() => {
     invoke('set_widget_expanded', { expanded: isExpanded }).catch((e) => {
@@ -128,11 +131,7 @@ export function Widget() {
             className="clear-btn"
             onClick={(e) => { 
               e.stopPropagation(); 
-              if (confirm('Clear all data? This cannot be undone.')) {
-                clearAllSessions();
-                refreshSessions();
-                refreshStats();
-              }
+              setShow(true);
             }}
             title="Clear all data"
           >
@@ -140,6 +139,31 @@ export function Widget() {
           </button>
         </div>
       </div>
+
+      {show && (
+        <div className="confirmation-overlay">
+          <div className="confirmation-dialog">
+            <p>Are you sure you want to clear all data? This action cannot be undone.</p>
+            <div className="confirmation-buttons">
+              <button 
+                className="confirm-btn"
+                onClick={() => {
+                  clearAllSessions();
+                  setShow(false);
+                }}
+              >
+                Yes
+              </button>
+              <button 
+                className="cancel-btn"
+                onClick={() => setShow(false)}
+              >
+                Cancel
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {isExpanded ? (
         <div className="widget-content">
