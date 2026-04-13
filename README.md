@@ -2,7 +2,7 @@
 
 A privacy-first Windows desktop widget that tracks your app usage and helps you stay aware of your digital habits. All data is stored locally on your machine — no cloud, no telemetry.
 
-> **Status:** Pre-beta (v0.1.0). Core tracking works; blocking UI and AI chatbot are on the roadmap.
+> **Status:** Planning pre-beta (v0.1.0). Core tracking works; blocking UI and AI chatbot are on the roadmap.
 
 ---
 
@@ -116,8 +116,8 @@ High-level direction for the project. See [CHANGELOG.md](./CHANGELOG.md) for ver
 - [ ] App blocking UI (backend already supports `add_blocked_app` / `remove_blocked_app`)
 - [ ] AI therapist chatbot powered by a local LLM via [Ollama](https://ollama.com/)
 - [ ] Encrypted SQLite database with a user-derived key
-- [ ] Expand backend test coverage (`end_crash_session`, error cases) 
-- [ ] Add a CI pipeline
+- [x] Expand backend test coverage (`end_crash_session`, error cases) 
+- [x] Add a CI pipeline
 - [ ] macOS support
 - [ ] iOS support (via the Screen Time API)
 - [ ] Browser extension for tab-level tracking (Chrome / Firefox)
