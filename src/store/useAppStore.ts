@@ -48,7 +48,6 @@ interface AppStore {
   isLoading: boolean;
   consentGiven: boolean | null;
   checkConsent: () => Promise<void>;
-
   startTracking: () => Promise<void>;
   stopTracking: () => Promise<void>;
   refreshStats: () => Promise<void>;

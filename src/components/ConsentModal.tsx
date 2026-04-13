@@ -14,7 +14,8 @@ export function ConsentModal() {
     };
 
     const handleDecline = async () => {
-        useAppStore.setState({ consentGiven: false });
+        await invoke ('set_setting', { key: 'consent_given', value: 'declined' });
+        invoke ('quit_app');
     };
 
     const handleDragStart = (e: React.MouseEvent) => {
