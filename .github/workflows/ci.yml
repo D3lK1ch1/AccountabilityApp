@@ -1,0 +1,27 @@
+name: CI
+
+on:
+  push:
+    branches: [ main ]
+
+jobs:
+  frontend:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      -  uses: actions/setup-node@v4
+         with:
+           node-version: '24'
+      - run: npm install
+      - run: npm test
+  backend:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@v1
+        with:
+          toolchain: stable
+      - run: cd src-tauri && cargo test
+
+
+
