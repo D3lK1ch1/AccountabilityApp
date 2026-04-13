@@ -119,8 +119,8 @@ describe('Widget', () => {
         id: 1,
         app_name: 'Chrome',
         window_title: 'Google',
-        start_time: Math.floor(Date.now() / 1000) - 120,
-        end_time: null,
+        start_time: 0,
+        end_time: 120,
         duration_seconds: 120,
       },
     ];
