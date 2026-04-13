@@ -40,7 +40,7 @@ async fn start_tracking(state: State<'_, AppState>) -> Result<(), String> {
         *stop_tx = Some(tx.clone());
     }
 
-    state.db.end_crash_session().await.map_err(|e| e.to_string())?;
+    state.db.end_crash_session().map_err(|e| e.to_string())?;
     tracker.start(tx);
 
     let mut tracker_lock = state.tracker.lock().await;

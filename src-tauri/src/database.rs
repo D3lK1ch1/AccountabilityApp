@@ -257,7 +257,7 @@ impl Database {
         Ok(app)
     }
 
-        pub async fn end_crash_session(&self) -> DbResult<()> {
+        pub fn end_crash_session(&self) -> DbResult<()> {
         let conn = self.conn.lock().map_err(|_| DatabaseError::Lock)?;
 
         let now = Utc::now().timestamp();
@@ -494,5 +494,27 @@ mod tests {
         db.insert_session(&session).unwrap();
 
         assert_eq!(db.get_total_tracked_time_today().unwrap(), 500);
+    }
+
+    #[test]
+    fn test_end_crash_session() {
+        let (db, _dir) = create_test_db();
+        let now = chrono::Utc::now().timestamp();
+
+        let session = AppSession {
+            id: None,
+            app_name: "TestApp".to_string(),
+            window_title: None,
+            start_time: now - 1000,
+            end_time: None,
+            duration_seconds: 0,
+        };
+
+        db.insert_session(&session).unwrap();
+        db.end_crash_session().unwrap();
+        let sessions = db.get_sessions_today().unwrap();
+
+        assert_eq!(sessions[0].end_time, Some(now));
+        assert_eq!(sessions[0].duration_seconds, 1000);
     }
 }
