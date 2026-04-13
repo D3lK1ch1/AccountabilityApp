@@ -57,5 +57,3 @@ Initial pre-beta release. Core activity tracking is functional; blocking and AI 
 
 - Activity tracking only works on Windows.
 - App blocking has backend commands but no user-facing UI.
-- Backend tests cover the database CRUD and aggregation paths, but do not yet cover `end_crash_session` or error cases.
-- No CI/CD pipeline.
