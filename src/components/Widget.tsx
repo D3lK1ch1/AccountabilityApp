@@ -30,6 +30,7 @@ export function Widget() {
     refreshStats,
     refreshSessions,
     startTracking,
+    stopTracking,
     clearAllSessions
   } = useAppStore();
 
@@ -116,7 +117,9 @@ export function Widget() {
 
           <button 
             className="quit-btn"
-            onClick={(e) => { e.stopPropagation(); invoke('quit_app'); }}
+            onClick={(e) => { e.stopPropagation();
+              stopTracking();
+              invoke('quit_app'); }}
             title="Quit app"
           >
             ✖
