@@ -132,7 +132,7 @@ impl ActivityTracker {
         self.is_running.load(std::sync::atomic::Ordering::SeqCst)
     }
 
-    #[cfg(target_os = "windows")]
+    #[cfg(any(target_os = "windows", target_os = "macos"))]
     fn get_active_window() -> Option<ActiveWindowInfo> {
         use active_win_pos_rs::get_active_window;
 
@@ -148,7 +148,7 @@ impl ActivityTracker {
         }
     }
 
-    #[cfg(not(target_os = "windows"))]
+    #[cfg(not(any(target_os = "windows", target_os = "macos")))]
     fn get_active_window() -> Option<ActiveWindowInfo> {
         None
     }
