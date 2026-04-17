@@ -115,10 +115,10 @@ High-level direction for the project. See [CHANGELOG.md](./CHANGELOG.md) for ver
 
 - [ ] App blocking UI (backend already supports `add_blocked_app` / `remove_blocked_app`)
 - [ ] AI therapist chatbot powered by a local LLM via [Ollama](https://ollama.com/)
-- [ ] Encrypted SQLite database with a user-derived key
+- [x] Encrypted SQLite database with a user-derived key
 - [x] Expand backend test coverage (`end_crash_session`, error cases) 
 - [x] Add a CI pipeline
-- [ ] macOS support
+- [x] macOS support *(active window tracking — merged PR #1)*
 - [ ] iOS support (via the Screen Time API)
 - [ ] Browser extension for tab-level tracking (Chrome / Firefox)
 

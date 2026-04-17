@@ -11,19 +11,23 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 Planned work for future versions. Items move into a dated release section below once shipped.
 
+### Added
+
+- **macOS active window tracking** — merged via PR #1; `active-win-pos-rs` now covers both Windows and macOS.
+- **CI pipeline** — GitHub Actions running `npm test` (frontend), `cargo test` on Ubuntu (backend), and `cargo test` on macOS. Missing: Windows runner and a Tauri build check.
+
+- **Encrypted local database** — SQLCipher bundled via `rusqlite` feature flag. Key management is being wired up; key source strategy (env var → OS keychain).
+
 ### Planned
 
 - **App blocking UI** — frontend surface for the existing `add_blocked_app` / `remove_blocked_app` / `get_blocked_apps` backend commands.
 - **AI therapist chatbot** — personalised advice based on tracked usage, powered by a local LLM via [Ollama](https://ollama.com/).
-- **Encrypted local database** — SQLite encryption with a user-derived key.
-- **CI pipeline** — GitHub Actions running `cargo test`, `cargo clippy`, `npm test`, and a Tauri build check on every push.
+- **CI: Windows runner + Tauri build check** — extend the CI pipeline to compile on Windows and verify a full Tauri build on each push.
 
 ### Platform Expansion (Future Versions)
 
-Activity tracking is currently Windows-only via `active-win-pos-rs`. These are the platform-specific APIs to research for each target:
-
-- **macOS** — investigate a Cocoa / AppKit accessibility API approach for active window detection.
 - **iOS** — [Screen Time API](https://developer.apple.com/documentation/screentime) (requires Apple Developer entitlements).
+- **Android** — Tauri Mobile supports Android; activity tracking API (`UsageStatsManager`) requires `PACKAGE_USAGE_STATS` permission.
 - **Browser tab tracking** — browser extensions for deeper insight into browser-based time:
   - Chrome: [Extensions API — tabs](https://developer.chrome.com/docs/extensions/reference/tabs)
   - Firefox: [WebExtensions API](https://developer.mozilla.org/en-US/docs/Mozilla/Add-ons/WebExtensions)
