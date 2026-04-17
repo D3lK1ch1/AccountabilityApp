@@ -13,6 +13,9 @@ pub enum DatabaseError {
     Lock,
     #[error("IO error: {0}")]
     Io(#[from] std::io::Error),
+    #[error("Keyring error: {0}")]
+    KeyringError(String),
+
 }
 
 pub type DbResult<T> = Result<T, DatabaseError>;
@@ -45,6 +48,26 @@ pub struct Database {
     conn: Mutex<Connection>,
 }
 
+fn get_or_create_key(db_path: &std::path::Path) -> Result<String, DatabaseError> {
+    let entry = keyring::Entry::new("accountability_app", "db_key")
+    .map_err(|e| DatabaseError::KeyringError(e.to_string()))?;
+
+    match entry.get_password() {
+        Ok(key) => Ok(key),
+        Err(keyring::Error::NoEntry) => {
+            if db_path.exists(){
+                std::fs::remove_file(db_path).map_err(DatabaseError::Io)?;
+                log::warn!("Encryption key missing - existing database deleted");
+            }
+            let raw : [u8; 32] = rand::random();
+            let key = hex::encode(raw);
+            entry.set_password(&key).map_err(|e| DatabaseError::KeyringError(e.to_string()))?;
+            Ok(key)
+        }
+        Err(e) => Err(DatabaseError::KeyringError(e.to_string())),
+    }
+}
+
 impl Database {
     pub fn new(app_data_dir: PathBuf) -> DbResult<Self> {
         std::fs::create_dir_all(&app_data_dir)?;
@@ -52,7 +75,9 @@ impl Database {
 
         log::info!("Opening database at: {:?}", db_path);
 
+        let db_key = get_or_create_key(&db_path)?;
         let conn = Connection::open(&db_path)?;
+        conn.execute_batch(&format!("PRAGMA key = \"x'{}'\";", db_key))?;
         let db = Database {
             conn: Mutex::new(conn),
         };
