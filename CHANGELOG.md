@@ -11,18 +11,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 Planned work for future versions. Items move into a dated release section below once shipped.
 
-### Added
-
-- **macOS active window tracking** — merged via PR #1; `active-win-pos-rs` now covers both Windows and macOS.
-- **CI pipeline** — GitHub Actions running `npm test` (frontend), `cargo test` on Ubuntu (backend), and `cargo test` on macOS. Missing: Windows runner and a Tauri build check.
-
-- **Encrypted local database** — SQLCipher bundled via `rusqlite` feature flag. Key management is being wired up; key source strategy (env var → OS keychain).
-
 ### Planned
 
 - **App blocking UI** — frontend surface for the existing `add_blocked_app` / `remove_blocked_app` / `get_blocked_apps` backend commands.
 - **AI therapist chatbot** — personalised advice based on tracked usage, powered by a local LLM via [Ollama](https://ollama.com/).
-- **CI: Windows runner + Tauri build check** — extend the CI pipeline to compile on Windows and verify a full Tauri build on each push.
 
 ### Platform Expansion (Future Versions)
 
@@ -56,8 +48,10 @@ Initial pre-beta release. Core activity tracking is functional; blocking and AI 
 - Frontend test setup with Vitest, Testing Library, and jsdom — tests for `useAppStore`, formatters, and the Widget component.
 - Backend Rust unit tests in `database.rs` covering session insert/get, session lifecycle updates, blocked-apps CRUD, settings CRUD, per-app usage aggregation, and total tracked time — run with `cargo test`.
 - Backend blocking data layer (`add_blocked_app`, `remove_blocked_app`, `get_blocked_apps`) — backend-only, no UI yet.
+- **macOS active window tracking** — merged via PR #1; `active-win-pos-rs` now covers both Windows and macOS.
+- **CI pipeline** — GitHub Actions running `npm test` (frontend), `cargo test` on Ubuntu (backend), and `cargo test` on macOS. Missing: Windows runner and a Tauri build check.
+- **Encrypted local database** — SQLCipher bundled via `rusqlite` feature flag. Key management is being wired up; key source strategy (env var → OS keychain).
 
 ### Known Limitations
 
-- Activity tracking only works on Windows.
 - App blocking has backend commands but no user-facing UI.
