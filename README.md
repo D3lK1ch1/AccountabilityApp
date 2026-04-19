@@ -2,7 +2,7 @@
 
 A privacy-first Windows desktop widget that tracks your app usage and helps you stay aware of your digital habits. All data is stored locally on your machine — no cloud, no telemetry.
 
-> **Status:** Planning pre-beta (v0.1.0). Core tracking works; blocking UI and AI chatbot are on the roadmap.
+> **Status:** Releasing pre-beta (v0.1.0). Core tracking works; blocking UI and AI chatbot are on the roadmap.
 
 ---
 
@@ -60,7 +60,7 @@ You'll need the following installed on a Windows 10 or later machine:
 1. Clone the repository:
 
    ```bash
-   git clone https://github.com/<your-username>/AccountabilityApp.git
+   git clone https://github.com/D3lK1ch1/AccountabilityApp.git
    cd AccountabilityApp
    ```
 
@@ -100,12 +100,19 @@ cargo test         # Run the Rust unit test suite
 
 Backend unit tests live inline at the bottom of `src-tauri/src/database.rs` (inside a `#[cfg(test)]` module) and cover session CRUD, session lifecycle updates, blocked-apps CRUD, settings CRUD, per-app usage aggregation, and total tracked time.
 
-> **Note:** This project is not currently accepting external contributions. The tests are here so you can confirm your local setup works and explore how the app is structured.
+### Building the Installer
+npm run tauri build
+
+Output lands in src-tauri/target/release
+
+Click on accountabilityapp.exe for the app itself.
 
 ---
 
 ## Usage
-Video to be determined once satisfied and closer to potential release
+The video bellow shows how the Accountability App works, from general consent to app and tab tracking, clearing data and quitting the app:
+
+  [Watch the demo video](https://github.com/D3lK1ch1/AccountabilityApp/releases/download/v0.1.0/AccountabilityApp.mp4)
 
 ---
 
