@@ -4,6 +4,10 @@ on:
   push:
     branches: [ main ]
 
+  pull_request:
+    branches: [ main ]
+
+
 jobs:
   frontend:
     runs-on: ubuntu-latest
@@ -27,6 +31,16 @@ jobs:
               libwebkit2gtk-4.1-dev \
               libappindicator3-dev librsvg2-dev patchelf \
               libxdo-dev libssl-dev
+      - run: cd src-tauri && cargo test
+
+
+  backend-macos:
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@v1
+        with:
+          toolchain: stable
       - run: cd src-tauri && cargo test
 
 
