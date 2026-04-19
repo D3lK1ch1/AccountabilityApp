@@ -25,7 +25,7 @@ fn db_err(e: database::DatabaseError) -> String {
         database::DatabaseError::Lock => "App is busy, please try again.".to_string(),
         database::DatabaseError::Io(_) => "Could not access app storage.".to_string(),
         database::DatabaseError::KeyringError(_) =>
-        {"Your session history could not be decrpted. Starting fresh will clear your history.".to_string()}
+        {"Your session history could not be decrypted. Starting fresh will clear your history.".to_string()}
     }
 }
 

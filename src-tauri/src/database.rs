@@ -38,6 +38,7 @@ pub struct BlockedApp {
     pub enabled: bool,
 }
 
+#[allow(dead_code)]
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Setting {
     pub key: String,
