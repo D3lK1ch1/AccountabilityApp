@@ -1,0 +1,59 @@
+name: Platform Compatibility Bug
+description: Report behaviour that differs between Windows and macOS, or a platform-specific crash.
+labels: [platform, bug]
+body:
+  - type: dropdown
+    id: platform
+    attributes:
+      label: Affected Platform
+      options:
+        - Windows 10
+        - Windows 11
+        - macOS 13 (Ventura)
+        - macOS 14 (Sonoma)
+        - macOS 15 (Sequoia)
+    validations:
+      required: true
+
+  - type: dropdown
+    id: area
+    attributes:
+      label: Affected Feature
+      options:
+        - Active window tracking
+        - System tray integration
+        - Global hotkey (Ctrl+Shift+A)
+        - Widget rendering
+        - Database / file paths
+        - CI pipeline (cargo test failure)
+        - Other
+    validations:
+      required: true
+
+  - type: textarea
+    id: description
+    attributes:
+      label: What goes wrong on this platform?
+      placeholder: Describe the failure. Does it work on the other platform?
+    validations:
+      required: true
+
+  - type: textarea
+    id: repro
+    attributes:
+      label: Steps to Reproduce
+    validations:
+      required: true
+
+  - type: textarea
+    id: ci
+    attributes:
+      label: CI Job Output (if applicable)
+      description: Paste output from the failing GitHub Actions job.
+      render: shell
+
+  - type: input
+    id: arch
+    attributes:
+      label: CPU Architecture
+      placeholder: e.g. x86_64, Apple Silicon (arm64)

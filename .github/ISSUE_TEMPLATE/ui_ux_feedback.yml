@@ -1,0 +1,38 @@
+name: UI/UX Feedback
+description: Report a visual or interaction issue with the widget, tray, or any UI component.
+labels: [ui/ux]
+body:
+  - type: dropdown
+    id: component
+    attributes:
+      label: Component
+      options:
+        - Widget (expanded view)
+        - Widget (collapsed view)
+        - Drag behaviour
+        - System tray menu
+        - Consent modal
+        - Clear data confirmation
+        - Other (describe below)
+    validations:
+      required: true
+
+  - type: textarea
+    id: description
+    attributes:
+      label: What felt wrong or confusing?
+      placeholder: Describe what you saw and what you expected instead.
+    validations:
+      required: true
+
+  - type: textarea
+    id: suggestion
+    attributes:
+      label: Suggested Improvement
+      placeholder: Optional — what would feel better?
+
+  - type: input
+    id: screenshot
+    attributes:
+      label: Screenshot or Recording
+      description: Paste an image link or drag-and-drop a screenshot above.

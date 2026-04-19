@@ -1,0 +1,57 @@
+name: Real-Time Sync Issue
+description: Report a problem with active window detection, session tracking, or the 3-second polling loop.
+labels: [sync, bug]
+body:
+  - type: dropdown
+    id: issue_type
+    attributes:
+      label: Issue Type
+      options:
+        - Session not starting when app changes
+        - Session not ending / stuck open
+        - Wrong app name detected
+        - Duration shown is incorrect
+        - Crash recovery left a dangling session
+        - Tracking stopped without closing the app
+        - Other
+    validations:
+      required: true
+
+  - type: input
+    id: app_name
+    attributes:
+      label: App Being Tracked
+      placeholder: e.g. Visual Studio Code, Chrome, Notepad
+
+  - type: textarea
+    id: expected
+    attributes:
+      label: What should have happened?
+    validations:
+      required: true
+
+  - type: textarea
+    id: actual
+    attributes:
+      label: What actually happened?
+    validations:
+      required: true
+
+  - type: textarea
+    id: context
+    attributes:
+      label: Additional Context
+      placeholder: How long was the app open? Did you switch apps quickly? Any relevant log output?
+
+  - type: dropdown
+    id: os
+    attributes:
+      label: Operating System
+      options:
+        - Windows 10
+        - Windows 11
+        - macOS 13 (Ventura)
+        - macOS 14 (Sonoma)
+        - macOS 15 (Sequoia)
+    validations:
+      required: true

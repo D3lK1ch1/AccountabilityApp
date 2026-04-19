@@ -1,0 +1,51 @@
+name: Privacy / Security Concern
+description: Report a data privacy issue, encryption problem, or security vulnerability.
+labels: [privacy, security]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        > **Sensitive issues:** If your report contains exploit details or private data, please email **dhizkch@gmail.com** directly instead of filing a public issue.
+        > You can also use [GitHub Security Advisories](../../security/advisories/new) for confidential disclosure.
+
+  - type: dropdown
+    id: area
+    attributes:
+      label: Concern Area
+      options:
+        - Encrypted database (SQLCipher key management)
+        - Data exposed outside expected storage path
+        - Consent flow bypassed or not persisted
+        - Session data not cleared after "Clear All"
+        - Network request observed (unexpected)
+        - Other
+    validations:
+      required: true
+
+  - type: textarea
+    id: description
+    attributes:
+      label: Describe the Concern
+      placeholder: What did you observe? What data was affected?
+    validations:
+      required: true
+
+  - type: dropdown
+    id: severity
+    attributes:
+      label: Perceived Severity
+      options:
+        - Low — minor privacy gap, no data exposed
+        - Medium — data accessible in unexpected ways
+        - High — data exposed to other users or processes
+        - Critical — encryption bypassed or data exfiltrated
+    validations:
+      required: true
+
+  - type: checkboxes
+    id: sensitive
+    attributes:
+      label: Disclosure Preference
+      options:
+        - label: I am comfortable with this being a public issue.
+        - label: I would prefer private disclosure (email or Security Advisory).

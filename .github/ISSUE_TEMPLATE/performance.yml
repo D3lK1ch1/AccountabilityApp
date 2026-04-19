@@ -1,0 +1,57 @@
+name: Performance Issue
+description: Report lag, high CPU/memory usage, or slow database operations.
+labels: [performance, bug]
+body:
+  - type: dropdown
+    id: symptom
+    attributes:
+      label: Symptom
+      options:
+        - High CPU usage (constant)
+        - High memory usage
+        - Widget UI lag or freezing
+        - Slow app startup
+        - Slow database read/write
+        - Polling loop causing noticeable slowdown
+        - Other
+    validations:
+      required: true
+
+  - type: textarea
+    id: trigger
+    attributes:
+      label: What were you doing when it occurred?
+      placeholder: e.g. Widget open with 7 days of data loaded, tracking Chrome for 2 hours.
+    validations:
+      required: true
+
+  - type: input
+    id: cpu
+    attributes:
+      label: CPU / Memory Reading
+      placeholder: e.g. 15% CPU sustained, 120 MB RAM (from Task Manager / Activity Monitor)
+
+  - type: input
+    id: duration
+    attributes:
+      label: How long did the issue last?
+      placeholder: e.g. Constant while app is open, 30 seconds then resolved
+
+  - type: dropdown
+    id: os
+    attributes:
+      label: Operating System
+      options:
+        - Windows 10
+        - Windows 11
+        - macOS 13 (Ventura)
+        - macOS 14 (Sonoma)
+        - macOS 15 (Sequoia)
+    validations:
+      required: true
+
+  - type: textarea
+    id: extra
+    attributes:
+      label: Additional Context
+      placeholder: How much data is in the database? How long has the app been running?

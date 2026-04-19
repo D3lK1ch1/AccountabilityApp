@@ -1,0 +1,54 @@
+name: Backend Bug
+description: Report a Rust panic, Tauri IPC failure, rusqlite error, or database issue.
+labels: [backend, bug]
+body:
+  - type: dropdown
+    id: area
+    attributes:
+      label: Affected Area
+      options:
+        - Session tracking (start/end/crash recovery)
+        - Database read/write
+        - Encrypted database (SQLCipher)
+        - Tauri IPC command
+        - App blocking (backend)
+        - Settings / consent persistence
+        - Other
+    validations:
+      required: true
+
+  - type: textarea
+    id: error
+    attributes:
+      label: Error or Panic Message
+      description: Paste the full Rust error, panic trace, or Tauri error output.
+      render: shell
+    validations:
+      required: true
+
+  - type: textarea
+    id: trigger
+    attributes:
+      label: What triggered it?
+      placeholder: Which action or Tauri command caused this?
+    validations:
+      required: true
+
+  - type: textarea
+    id: cargo_test
+    attributes:
+      label: cargo test output (if relevant)
+      render: shell
+
+  - type: dropdown
+    id: os
+    attributes:
+      label: Operating System
+      options:
+        - Windows 10
+        - Windows 11
+        - macOS 13 (Ventura)
+        - macOS 14 (Sonoma)
+        - macOS 15 (Sequoia)
+    validations:
+      required: true

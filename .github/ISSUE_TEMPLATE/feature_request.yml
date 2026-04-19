@@ -1,0 +1,50 @@
+name: Feature Request
+description: Suggest a new feature or improvement aligned with the project roadmap.
+labels: [enhancement]
+body:
+  - type: dropdown
+    id: area
+    attributes:
+      label: Roadmap Area
+      options:
+        - App blocking UI
+        - AI therapist chatbot (Ollama)
+        - Browser extension (Chrome/Firefox)
+        - iOS / Screen Time API
+        - Android / UsageStatsManager
+        - Activity tracking improvements
+        - Widget / UI
+        - Privacy / encryption
+        - Other
+    validations:
+      required: true
+
+  - type: textarea
+    id: problem
+    attributes:
+      label: What problem does this solve?
+      placeholder: Describe the gap or pain point this feature addresses.
+    validations:
+      required: true
+
+  - type: textarea
+    id: proposal
+    attributes:
+      label: Proposed Solution
+      placeholder: What would you build or change?
+    validations:
+      required: true
+
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Alternatives Considered
+      placeholder: Any other approaches you thought about?
+
+  - type: checkboxes
+    id: checklist
+    attributes:
+      label: Before Submitting
+      options:
+        - label: I checked the roadmap in CHANGELOG.md and this is not already planned.
+          required: true
