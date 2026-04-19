@@ -1,8 +1,8 @@
 [package]
 name = "accountabilityapp"
 version = "0.1.0"
-description = "Accountability App - Track app/browser usage with AI chatbot analysis"
-authors = ["you"]
+description = "Accountability App - Track app/browser usage with blocking features on the works."
+authors = ["Delia Kok"]
 edition = "2021"
 
 [lib]
