@@ -23,6 +23,8 @@ dist-ssr
 *.sln
 *.sw?
 
-Progress.md     
+Progress.md
 AGENTS.md
+Notes.md
+.claude/
 
