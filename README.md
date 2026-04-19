@@ -101,7 +101,9 @@ cargo test         # Run the Rust unit test suite
 Backend unit tests live inline at the bottom of `src-tauri/src/database.rs` (inside a `#[cfg(test)]` module) and cover session CRUD, session lifecycle updates, blocked-apps CRUD, settings CRUD, per-app usage aggregation, and total tracked time.
 
 ### Building the Installer
+```bash
 npm run tauri build
+```
 
 Output lands in src-tauri/target/release
 
@@ -133,4 +135,8 @@ High-level direction for the project. See [CHANGELOG.md](./CHANGELOG.md) for ver
 
 ## License
 
-License to be decided before beta release.
+This program is free software: you can redistribute it and/or modify it under the terms of the GNU General Public License as published by the Free Software Foundation, either version 3 of the License, or (at your option) any later version.
+
+This program is distributed in the hope that it will be useful, but WITHOUT ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the GNU General Public License for more details.
+
+You should have received a copy of the GNU General Public License along with this program. If not, see <https://www.gnu.org/licenses/>.
