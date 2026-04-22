@@ -135,7 +135,12 @@ async fn get_tracked_time_per_app(state: State<'_, AppState>, app_name: String) 
 
 #[tauri::command]
 async fn clear_all_sessions(state: State<'_, AppState>) -> Result<(), String> {
-    state.db.delete_all_sessions().map_err(db_err)
+    state.db.delete_all_sessions().map_err(db_err)?;
+    let tracker_lock = state.tracker.lock().await;
+    if let Some(tracker) = tracker_lock.as_ref() {
+        tracker.reset_sessions();
+    }
+    Ok(())
 }
 
 #[tauri::command]

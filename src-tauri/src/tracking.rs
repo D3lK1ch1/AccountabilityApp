@@ -13,6 +13,7 @@ pub struct ActiveWindowInfo {
 pub struct ActivityTracker {
     db: Arc<Database>,
     is_running: Arc<std::sync::atomic::AtomicBool>,
+    needs_reset: Arc<std::sync::atomic::AtomicBool>,
     polling_interval_secs: u64,
 }
 
@@ -21,12 +22,14 @@ impl ActivityTracker {
         Self {
             db,
             is_running: Arc::new(std::sync::atomic::AtomicBool::new(false)),
+            needs_reset: Arc::new(std::sync::atomic::AtomicBool::new(false)),
             polling_interval_secs,
         }
     }
 
     pub fn start(&self, stop_tx: mpsc::Sender<()>) {
         let is_running = self.is_running.clone();
+        let needs_reset = self.needs_reset.clone();
         let db = self.db.clone();
         let interval = self.polling_interval_secs;
 
@@ -39,6 +42,12 @@ impl ActivityTracker {
 
             while is_running.load(std::sync::atomic::Ordering::SeqCst) {
                 let window_info = Self::get_active_window();
+
+                if needs_reset.load(std::sync::atomic::Ordering::SeqCst) {
+                    current_session = None;
+                    needs_reset.store(false, std::sync::atomic::Ordering::SeqCst);
+
+                }
 
                 match window_info {
                     Some(info) => {
@@ -130,6 +139,11 @@ impl ActivityTracker {
 
     pub fn is_running(&self) -> bool {
         self.is_running.load(std::sync::atomic::Ordering::SeqCst)
+    }
+
+    pub fn reset_sessions(&self) {
+        self.needs_reset
+            .store(true, std::sync::atomic::Ordering::SeqCst);
     }
 
     #[cfg(any(target_os = "windows", target_os = "macos"))]
