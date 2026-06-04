@@ -14,9 +14,11 @@ describe('useAppStore', () => {
       currentWindowTitle: null,
       stats: null,
       sessions: [],
+      tabSessions: [],
       blockedApps: [],
       isExpanded: true,
       isLoading: false,
+      lastError: null,
     });
   });
 
@@ -27,7 +29,9 @@ describe('useAppStore', () => {
       expect(state.currentApp).toBe(null);
       expect(state.stats).toBe(null);
       expect(state.sessions).toEqual([]);
+      expect(state.tabSessions).toEqual([]);
       expect(state.isExpanded).toBe(true);
+      expect(state.lastError).toBe(null);
     });
   });
 
@@ -89,13 +93,40 @@ describe('useAppStore', () => {
       const { invoke } = await import('@tauri-apps/api/core');
       (invoke as ReturnType<typeof vi.fn>)
         .mockResolvedValueOnce(mockStats)
-        .mockResolvedValueOnce(mockStatus);
+        .mockResolvedValueOnce(mockStatus)
+        .mockResolvedValueOnce(3600);
       
       await useAppStore.getState().refreshStats();
       
       expect(useAppStore.getState().stats).toEqual(mockStats);
       expect(useAppStore.getState().currentApp).toBe('Chrome');
       expect(useAppStore.getState().currentWindowTitle).toBe('Google');
+      expect(useAppStore.getState().currentAppSeconds).toBe(3600);
+    });
+
+    test('does not request per-app time when no app is active', async () => {
+      const mockStats = {
+        total_tracked_seconds: 0,
+        most_used_app: null,
+        usage_by_app: [],
+        sessions_count: 0,
+      };
+      const mockStatus = {
+        is_tracking: true,
+        current_app: null,
+        current_window_title: null,
+      };
+
+      const { invoke } = await import('@tauri-apps/api/core');
+      (invoke as ReturnType<typeof vi.fn>)
+        .mockResolvedValueOnce(mockStats)
+        .mockResolvedValueOnce(mockStatus);
+
+      await useAppStore.getState().refreshStats();
+
+      expect(invoke).not.toHaveBeenCalledWith('get_tracked_time_per_app', expect.anything());
+      expect(useAppStore.getState().currentApp).toBe(null);
+      expect(useAppStore.getState().currentAppSeconds).toBe(0);
     });
   });
 
@@ -133,6 +164,29 @@ describe('useAppStore', () => {
       await useAppStore.getState().refreshBlockedApps();
       
       expect(useAppStore.getState().blockedApps).toEqual(mockBlockedApps);
+    });
+  });
+
+  describe('tab sessions', () => {
+    test('refreshTabSessions updates tabSessions from API', async () => {
+      const mockTabSessions = [
+        {
+          id: 1,
+          source: 'chrome',
+          tab_url: 'https://example.com',
+          tab_title: 'Example',
+          start_time: Date.now(),
+          end_time: null,
+          duration_seconds: 0,
+        },
+      ];
+
+      const { invoke } = await import('@tauri-apps/api/core');
+      (invoke as ReturnType<typeof vi.fn>).mockResolvedValueOnce(mockTabSessions);
+
+      await useAppStore.getState().refreshTabSessions();
+
+      expect(useAppStore.getState().tabSessions).toEqual(mockTabSessions);
     });
   });
 });

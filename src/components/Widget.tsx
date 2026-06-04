@@ -1,5 +1,4 @@
-import { useEffect } from 'react';
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { invoke } from '@tauri-apps/api/core';
 import { getCurrentWindow } from '@tauri-apps/api/window';
 import { useAppStore } from '../store/useAppStore';
@@ -9,7 +8,7 @@ function formatDuration(seconds: number): string {
   const hours = Math.floor(seconds / 3600);
   const minutes = Math.floor((seconds % 3600) / 60);
   const secs = seconds % 60;
-  
+
   if (hours > 0) {
     return `${hours}h ${minutes}m`;
   } else if (minutes > 0) {
@@ -19,23 +18,24 @@ function formatDuration(seconds: number): string {
 }
 
 export function Widget() {
-  const { 
-    isTracking, 
-    currentApp, 
+  const {
+    isTracking,
+    currentApp,
     currentWindowTitle,
-    stats, 
+    stats,
     sessions,
-    isExpanded, 
+    isExpanded,
+    lastError,
     setExpanded,
     toggleTracking,
     refreshStats,
     refreshSessions,
     startTracking,
     stopTracking,
-    clearAllSessions
+    clearAllSessions,
   } = useAppStore();
 
-  const [show,setShow] = useState(false);
+  const [show, setShow] = useState(false);
 
   useEffect(() => {
     invoke('set_widget_expanded', { expanded: isExpanded }).catch((e) => {
@@ -45,7 +45,7 @@ export function Widget() {
 
   useEffect(() => {
     startTracking();
-  }, []);
+  }, [startTracking]);
 
   useEffect(() => {
     if (isExpanded) {
@@ -59,7 +59,7 @@ export function Widget() {
         refreshStats();
       }
     }, 3000);
-    
+
     return () => clearInterval(interval);
   }, [isTracking, refreshStats]);
 
@@ -81,56 +81,52 @@ export function Widget() {
   const handleExpand = () => {
     setExpanded(!isExpanded);
   };
-  
-  const currentSession = sessions.find(s => s.end_time === null && s.app_name === currentApp);
+
+  const currentSession = sessions.find((s) => s.end_time === null && s.app_name === currentApp);
   const currentSessionSeconds = currentSession ? Math.floor(Date.now() / 1000) - currentSession.start_time : 0;
   const totalTime = currentSessionSeconds ?? 0;
   const topApp = stats?.most_used_app ?? 'No data yet';
   const recentSessions = sessions.slice(0, 8);
-  const isChrome = (currentApp ?? '').toLowerCase().includes('chrome');
-  const chromeTabTitle = isChrome ? (currentWindowTitle ?? null) : null;
-  const isVisualStudio = (currentApp ?? '').toLowerCase().includes('visual studio');
-  const visualStudioTabTitle = isVisualStudio ? (currentWindowTitle ?? null) : null;
-
+  const appName = (currentApp ?? '').toLowerCase();
+  const showWindowTitle = appName.includes('chrome') || appName.includes('visual studio');
+  const detailTitle = showWindowTitle ? currentWindowTitle : null;
 
   return (
     <div className={`widget ${isExpanded ? 'expanded' : ''}`}>
-      <div 
-        className="widget-header" 
-        onMouseDown={handleDragStart}
-      >
+      <div className="widget-header" onMouseDown={handleDragStart}>
         <div className="header-left">
           <span className="title">Accountability</span>
         </div>
         <div className="header-right">
-          <button 
+          <button
             className={`tracking-btn ${isTracking ? 'active' : ''}`}
             onClick={(e) => { e.stopPropagation(); toggleTracking(); }}
             title={isTracking ? 'Stop tracking' : 'Start tracking'}
           >
-            {isTracking ? '⏹' : '▶'}
+            {isTracking ? 'Stop' : 'Start'}
           </button>
-          <button 
+          <button
             className="expand-btn"
             onClick={(e) => { e.stopPropagation(); handleExpand(); }}
             title={isExpanded ? 'Collapse' : 'Expand'}
           >
             {isExpanded ? '▼' : '▲'}
           </button>
-
-          <button 
+          <button
             className="quit-btn"
-            onClick={(e) => { e.stopPropagation();
+            onClick={(e) => {
+              e.stopPropagation();
               stopTracking();
-              invoke('quit_app'); }}
+              invoke('quit_app');
+            }}
             title="Quit app"
           >
             ✖
           </button>
-          <button 
+          <button
             className="clear-btn"
-            onClick={(e) => { 
-              e.stopPropagation(); 
+            onClick={(e) => {
+              e.stopPropagation();
               setShow(true);
             }}
             title="Clear all data"
@@ -145,7 +141,7 @@ export function Widget() {
           <div className="confirmation-dialog">
             <p>Are you sure you want to clear all data? This action cannot be undone.</p>
             <div className="confirmation-buttons">
-              <button 
+              <button
                 className="confirm-btn"
                 onClick={() => {
                   clearAllSessions();
@@ -154,10 +150,7 @@ export function Widget() {
               >
                 Yes
               </button>
-              <button 
-                className="cancel-btn"
-                onClick={() => setShow(false)}
-              >
+              <button className="cancel-btn" onClick={() => setShow(false)}>
                 Cancel
               </button>
             </div>
@@ -167,6 +160,11 @@ export function Widget() {
 
       {isExpanded ? (
         <div className="widget-content">
+          {lastError && (
+            <div className="error-banner" role="alert">
+              {lastError}
+            </div>
+          )}
           <div className="stats-grid">
             <div className="stat-card">
               <div className="stat-label">Current App</div>
@@ -177,25 +175,20 @@ export function Widget() {
               <div className="stat-value app-name">{topApp}</div>
             </div>
           </div>
-          
+
           <div className="current-activity">
             <div className="activity-label">Current Activity</div>
             <div className="activity-value">
               {currentApp ? (
-                <span className="tracking-indicator">●</span>
+                <span className="tracking-indicator">On</span>
               ) : (
                 <span className="idle">Idle</span>
               )}
               {currentApp || 'None'}
             </div>
-            {chromeTabTitle && (
-              <div className="activity-subvalue" title={chromeTabTitle}>
-                {chromeTabTitle}
-              </div>
-            )}
-            {visualStudioTabTitle && (
-              <div className="activity-subvalue" title={visualStudioTabTitle}>
-                {visualStudioTabTitle}
+            {detailTitle && (
+              <div className="activity-subvalue" title={detailTitle}>
+                {detailTitle}
               </div>
             )}
           </div>
@@ -204,10 +197,7 @@ export function Widget() {
             <div className="sessions-header">Recent Sessions</div>
             {recentSessions.length > 0 ? (
               recentSessions.map((s) => (
-                <div
-                  key={`${s.id ?? 'no-id'}-${s.start_time}-${s.app_name}`}
-                  className="session-item"
-                >
+                <div key={`${s.id ?? 'no-id'}-${s.start_time}-${s.app_name}`} className="session-item">
                   <div className="session-left">
                     <span className="session-app">{s.app_name}</span>
                     {s.window_title && (
@@ -216,7 +206,9 @@ export function Widget() {
                       </span>
                     )}
                   </div>
-                  <span className="session-time">{formatDuration(s.end_time ? s.duration_seconds : Math.floor(Date.now() / 1000) - s.start_time)}</span>
+                  <span className="session-time">
+                    {formatDuration(s.end_time ? s.duration_seconds : Math.floor(Date.now() / 1000) - s.start_time)}
+                  </span>
                 </div>
               ))
             ) : (
@@ -232,10 +224,7 @@ export function Widget() {
                   <span className="app-name">{app.app_name}</span>
                   <span className="app-time">{formatDuration(app.total_seconds)}</span>
                   <div className="usage-bar">
-                    <div 
-                      className="usage-fill" 
-                      style={{ width: `${app.percentage}%` }}
-                    />
+                    <div className="usage-fill" style={{ width: `${app.percentage}%` }} />
                   </div>
                 </div>
               ))}
@@ -247,11 +236,8 @@ export function Widget() {
           <div className="compact-stats">
             <span className={`status-dot ${isTracking ? 'active' : ''}`}></span>
             <span className="compact-time">{formatDuration(totalTime)}</span>
-            <span className="compact-app" title={chromeTabTitle ?? currentApp ?? ''}>
-              {chromeTabTitle || currentApp || '-'}
-            </span>
-            <span className="compact-app" title={visualStudioTabTitle ?? currentApp ?? ''}>
-              {visualStudioTabTitle || currentApp || '-'}
+            <span className="compact-app" title={detailTitle ?? currentApp ?? ''}>
+              {detailTitle || currentApp || '-'}
             </span>
           </div>
         </div>

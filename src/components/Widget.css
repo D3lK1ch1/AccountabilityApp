@@ -54,12 +54,13 @@ body {
   pointer-events: auto;
 }
 
-.tracking-btn, .expand-btn {
+.tracking-btn, .expand-btn, .quit-btn, .clear-btn {
   background: rgba(255, 255, 255, 0.1);
   border: none;
   border-radius: 6px;
-  width: 28px;
+  min-width: 28px;
   height: 28px;
+  padding: 0;
   color: #fff;
   cursor: pointer;
   display: flex;
@@ -69,13 +70,30 @@ body {
   transition: all 0.2s;
 }
 
-.tracking-btn:hover, .expand-btn:hover {
+.tracking-btn {
+  padding: 0 8px;
+}
+
+.tracking-btn:hover, .expand-btn:hover, .quit-btn:hover, .clear-btn:hover {
   background: rgba(255, 255, 255, 0.2);
 }
 
 .tracking-btn.active {
   background: #4ade80;
   color: #1a1a2e;
+}
+
+.quit-btn:hover, .clear-btn:hover {
+  background: rgba(248, 113, 113, 0.3);
+}
+
+.error-banner {
+  background: rgba(248, 113, 113, 0.16);
+  border: 1px solid rgba(248, 113, 113, 0.4);
+  border-radius: 8px;
+  color: #fecaca;
+  font-size: 12px;
+  padding: 10px 12px;
 }
 
 .widget-compact {

@@ -10,6 +10,16 @@ interface AppSession {
   duration_seconds: number;
 }
 
+interface TabSession {
+  id: number | null;
+  source: string;
+  tab_url: string;
+  tab_title: string;
+  start_time: number;
+  end_time: number | null;
+  duration_seconds: number;
+}
+
 interface UsageData {
   app_name: string;
   total_seconds: number;
@@ -43,15 +53,18 @@ interface AppStore {
   currentAppSeconds: number;
   stats: DashboardStats | null;
   sessions: AppSession[];
+  tabSessions: TabSession[];
   blockedApps: BlockedApp[];
   isExpanded: boolean;
   isLoading: boolean;
+  lastError: string | null;
   consentGiven: boolean | null;
   checkConsent: () => Promise<void>;
   startTracking: () => Promise<void>;
   stopTracking: () => Promise<void>;
   refreshStats: () => Promise<void>;
   refreshSessions: () => Promise<void>;
+  refreshTabSessions: () => Promise<void>;
   toggleTracking: () => Promise<void>;
   setExpanded: (expanded: boolean) => void;
   clearAllSessions: () => Promise<void>;
@@ -67,9 +80,11 @@ export const useAppStore = create<AppStore>((set, get) => ({
   currentAppSeconds: 0,
   stats: null,
   sessions: [],
+  tabSessions: [],
   blockedApps: [],
   isExpanded: true,
   isLoading: false,
+  lastError: null,
   consentGiven: null,
 
   checkConsent: async () => {
@@ -81,6 +96,7 @@ export const useAppStore = create<AppStore>((set, get) => ({
         set({ consentGiven: false });
       }
     } catch (e) {
+      set({ lastError: 'Failed to check consent.' });
       console.error('Failed to check consent:', e);
     }
   },
@@ -90,10 +106,11 @@ export const useAppStore = create<AppStore>((set, get) => ({
   startTracking: async () => {
     try {
       await invoke('start_tracking');
-      set({ isTracking: true });
+      set({ isTracking: true, lastError: null });
       get().refreshStats();
       get().refreshSessions();
     } catch (e) {
+      set({ lastError: 'Failed to start tracking.' });
       console.error('Failed to start tracking:', e);
     }
   },
@@ -101,8 +118,9 @@ export const useAppStore = create<AppStore>((set, get) => ({
   stopTracking: async () => {
     try {
       await invoke('stop_tracking');
-      set({ isTracking: false });
+      set({ isTracking: false, lastError: null });
     } catch (e) {
+      set({ lastError: 'Failed to stop tracking.' });
       console.error('Failed to stop tracking:', e);
     }
   },
@@ -111,14 +129,18 @@ export const useAppStore = create<AppStore>((set, get) => ({
     try {
       const stats = await invoke<DashboardStats>('get_dashboard_stats');
       const status = await invoke<TrackerStatus>('get_tracker_status');
-      const time = await invoke<number>('get_tracked_time_per_app', { appName: status.current_app});
+      const time = status.current_app
+        ? await invoke<number>('get_tracked_time_per_app', { appName: status.current_app })
+        : 0;
       set({ 
         stats, 
         currentApp: status.current_app,
         currentAppSeconds: status.current_app ? time : 0,
         currentWindowTitle: status.current_window_title,
+        lastError: null,
       });
     } catch (e) {
+      set({ lastError: 'Failed to refresh stats.' });
       console.error('Failed to refresh stats:', e);
     }
   },
@@ -126,9 +148,20 @@ export const useAppStore = create<AppStore>((set, get) => ({
   refreshSessions: async () => {
     try {
       const sessions = await invoke<AppSession[]>('get_sessions_today');
-      set({ sessions });
+      set({ sessions, lastError: null });
     } catch (e) {
+      set({ lastError: 'Failed to refresh sessions.' });
       console.error('Failed to refresh sessions:', e);
+    }
+  },
+
+  refreshTabSessions: async () => {
+    try {
+      const tabSessions = await invoke<TabSession[]>('get_tab_sessions_today');
+      set({ tabSessions, lastError: null });
+    } catch (e) {
+      set({ lastError: 'Failed to refresh tab sessions.' });
+      console.error('Failed to refresh tab sessions:', e);
     }
   },
 
@@ -152,7 +185,11 @@ export const useAppStore = create<AppStore>((set, get) => ({
   clearAllSessions: async () => {
     try {
       await invoke('clear_all_sessions');
+      get().refreshStats();
+      get().refreshSessions();
+      get().refreshTabSessions();
     } catch (e) {
+      set({ lastError: 'Failed to clear session data.' });
       console.error('Failed to clear all sessions:', e);
     }
   },
@@ -162,6 +199,7 @@ export const useAppStore = create<AppStore>((set, get) => ({
       await invoke('add_blocked_app', { appName, blockDurationMinutes: duration });
       get().refreshBlockedApps();
     } catch (e) {
+      set({ lastError: 'Failed to add blocked app.' });
       console.error('Failed to add blocked app:', e);
     }
   },
@@ -171,6 +209,7 @@ export const useAppStore = create<AppStore>((set, get) => ({
       await invoke('remove_blocked_app', { appName });
       get().refreshBlockedApps();
     } catch (e) {
+      set({ lastError: 'Failed to remove blocked app.' });
       console.error('Failed to remove blocked app:', e);
     }
   },
@@ -178,8 +217,9 @@ export const useAppStore = create<AppStore>((set, get) => ({
   refreshBlockedApps: async () => {
     try {
       const blockedApps = await invoke<BlockedApp[]>('get_blocked_apps');
-      set({ blockedApps });
+      set({ blockedApps, lastError: null });
     } catch (e) {
+      set({ lastError: 'Failed to refresh blocked apps.' });
       console.error('Failed to refresh blocked apps:', e);
     }
   },
