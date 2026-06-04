@@ -53,7 +53,7 @@ impl ActivityTracker {
                     Some(info) => {
                         if info.app_name != "Accountability App" {
                             if let Some((session_id, session)) = &current_session {
-                                if session.app_name != info.app_name {
+                                if Self::should_start_new_session(session, &info) {
                                     let end_time = Utc::now().timestamp();
                                     let duration = end_time - session.start_time;
 
@@ -72,7 +72,7 @@ impl ActivityTracker {
                                         duration_seconds: 0,
                                     };
 
-                                    match db.insert_session(&new_session) {
+                                    match db.insert_app_session(&new_session) {
                                         Ok(new_id) => {
                                             current_session = Some((new_id, new_session));
                                         }
@@ -91,7 +91,7 @@ impl ActivityTracker {
                                     duration_seconds: 0,
                                 };
 
-                                match db.insert_session(&new_session) {
+                                match db.insert_app_session(&new_session) {
                                     Ok(id) => {
                                         current_session = Some((id, new_session));
                                     }
@@ -169,5 +169,57 @@ impl ActivityTracker {
 
     pub fn get_current_activity(&self) -> Option<ActiveWindowInfo> {
         Self::get_active_window()
+    }
+
+    fn should_start_new_session(session: &AppSession, info: &ActiveWindowInfo) -> bool {
+        session.app_name != info.app_name
+            || session.window_title.as_deref() != Some(info.window_title.as_str())
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn session(app_name: &str, window_title: Option<&str>) -> AppSession {
+        AppSession {
+            id: Some(1),
+            app_name: app_name.to_string(),
+            window_title: window_title.map(str::to_string),
+            start_time: 100,
+            end_time: None,
+            duration_seconds: 0,
+        }
+    }
+
+    fn info(app_name: &str, window_title: &str) -> ActiveWindowInfo {
+        ActiveWindowInfo {
+            app_name: app_name.to_string(),
+            window_title: window_title.to_string(),
+        }
+    }
+
+    #[test]
+    fn starts_new_session_when_app_changes() {
+        assert!(ActivityTracker::should_start_new_session(
+            &session("Chrome", Some("Docs")),
+            &info("Code", "Docs")
+        ));
+    }
+
+    #[test]
+    fn starts_new_session_when_title_changes() {
+        assert!(ActivityTracker::should_start_new_session(
+            &session("Chrome", Some("Docs")),
+            &info("Chrome", "Mail")
+        ));
+    }
+
+    #[test]
+    fn keeps_session_when_app_and_title_match() {
+        assert!(!ActivityTracker::should_start_new_session(
+            &session("Chrome", Some("Docs")),
+            &info("Chrome", "Docs")
+        ));
     }
 }

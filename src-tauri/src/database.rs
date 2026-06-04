@@ -31,20 +31,23 @@ pub struct AppSession {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct TabSession {
+    pub id: Option<i64>,
+    pub source: String,
+    pub tab_url: String,
+    pub tab_title: String,
+    pub start_time: i64,
+    pub end_time: Option<i64>,
+    pub duration_seconds: i64,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct BlockedApp {
     pub id: Option<i64>,
     pub app_name: String,
     pub block_duration_minutes: i32,
     pub enabled: bool,
 }
-
-#[allow(dead_code)]
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct Setting {
-    pub key: String,
-    pub value: String,
-}
-
 pub struct Database {
     conn: Mutex<Connection>,
 }
@@ -57,8 +60,10 @@ fn get_or_create_key(db_path: &std::path::Path) -> Result<String, DatabaseError>
         Ok(key) => Ok(key),
         Err(keyring::Error::NoEntry) => {
             if db_path.exists(){
-                std::fs::remove_file(db_path).map_err(DatabaseError::Io)?;
-                log::warn!("Encryption key missing - existing database deleted");
+                let timestamp = Utc::now().timestamp();
+                let backup_path = db_path.with_extension(format!("db.unreadable.{}", timestamp));
+                std::fs::rename(db_path, &backup_path).map_err(DatabaseError::Io)?;
+                log::warn!("Encryption key missing - existing database moved to {:?}", backup_path);
             }
             let raw : [u8; 32] = rand::random();
             let key = hex::encode(raw);
@@ -103,6 +108,19 @@ impl Database {
         )?;
 
         conn.execute(
+            "CREATE TABLE IF NOT EXISTS tab_sessions (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                source TEXT NOT NULL,
+                tab_url TEXT NOT NULL,
+                tab_title TEXT NOT NULL,
+                start_time INTEGER NOT NULL,
+                end_time INTEGER,
+                duration_seconds INTEGER DEFAULT 0
+            )",
+            [],
+        )?;
+
+        conn.execute(
             "CREATE TABLE IF NOT EXISTS blocked_apps (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
                 app_name TEXT NOT NULL UNIQUE,
@@ -130,11 +148,21 @@ impl Database {
             [],
         )?;
 
+        conn.execute(
+            "CREATE INDEX IF NOT EXISTS idx_tab_sessions_start_time ON tab_sessions(start_time)",
+            [],
+        )?;
+
+        conn.execute(
+            "CREATE INDEX IF NOT EXISTS idx_tab_sessions_source ON tab_sessions(source)",
+            [],
+        )?;
+
         log::info!("Database tables initialized");
         Ok(())
     }
 
-    pub fn insert_session(&self, session: &AppSession) -> DbResult<i64> {
+    pub fn insert_app_session(&self, session: &AppSession) -> DbResult<i64> {
         let conn = self.conn.lock().map_err(|_| DatabaseError::Lock)?;
 
         conn.execute(
@@ -239,6 +267,83 @@ impl Database {
         Ok(())
     }
 
+    pub fn insert_tab_session(&self, session: &TabSession) -> DbResult<i64> {
+        let conn = self.conn.lock().map_err(|_| DatabaseError::Lock)?;
+
+        conn.execute(
+            "INSERT INTO tab_sessions (source, tab_url, tab_title, start_time, end_time, duration_seconds)
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6)",
+            params![
+                session.source,
+                session.tab_url,
+                session.tab_title,
+                session.start_time,
+                session.end_time,
+                session.duration_seconds,
+            ],
+        )?;
+
+        Ok(conn.last_insert_rowid())
+    }
+
+    pub fn close_tab_session(
+        &self,
+        session_id: i64,
+        end_time: i64,
+        duration: i64,
+    ) -> DbResult<()> {
+        let conn = self.conn.lock().map_err(|_| DatabaseError::Lock)?;
+
+        conn.execute(
+            "UPDATE tab_sessions SET end_time = ?1, duration_seconds = ?2 WHERE id = ?3",
+            params![end_time, duration, session_id],
+        )?;
+
+        Ok(())
+    }
+
+    pub fn get_tab_sessions_today(&self) -> DbResult<Vec<TabSession>> {
+        let conn = self.conn.lock().map_err(|_| DatabaseError::Lock)?;
+
+        let today_start = Utc::now()
+            .date_naive()
+            .and_hms_opt(0, 0, 0)
+            .unwrap()
+            .and_utc()
+            .timestamp();
+
+        let mut stmt = conn.prepare(
+            "SELECT id, source, tab_url, tab_title, start_time, end_time, duration_seconds
+             FROM tab_sessions
+             WHERE start_time >= ?1
+             ORDER BY start_time DESC",
+        )?;
+
+        let sessions = stmt
+            .query_map([today_start], |row| {
+                Ok(TabSession {
+                    id: Some(row.get(0)?),
+                    source: row.get(1)?,
+                    tab_url: row.get(2)?,
+                    tab_title: row.get(3)?,
+                    start_time: row.get(4)?,
+                    end_time: row.get(5)?,
+                    duration_seconds: row.get(6)?,
+                })
+            })?
+            .collect::<Result<Vec<_>, _>>()?;
+
+        Ok(sessions)
+    }
+
+    pub fn delete_all_tab_sessions(&self) -> DbResult<()> {
+        let conn = self.conn.lock().map_err(|_| DatabaseError::Lock)?;
+
+        conn.execute("DELETE FROM tab_sessions", [])?;
+
+        Ok(())
+    }
+
     pub fn get_total_tracked_time_today(&self) -> DbResult<i64> {
         let conn = self.conn.lock().map_err(|_| DatabaseError::Lock)?;
 
@@ -283,7 +388,7 @@ impl Database {
         Ok(app)
     }
 
-        pub fn end_crash_session(&self) -> DbResult<()> {
+    pub fn end_crash_session(&self) -> DbResult<()> {
         let conn = self.conn.lock().map_err(|_| DatabaseError::Lock)?;
 
         let now = Utc::now().timestamp();
@@ -367,7 +472,6 @@ impl Database {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use std::fs;
     use tempfile::TempDir;
 
     fn create_test_db() -> (Database, TempDir) {
@@ -389,7 +493,7 @@ mod tests {
             duration_seconds: 0,
         };
 
-        let id = db.insert_session(&session).unwrap();
+        let id = db.insert_app_session(&session).unwrap();
         assert!(id > 0);
 
         let sessions = db.get_sessions_today().unwrap();
@@ -410,7 +514,7 @@ mod tests {
             duration_seconds: 0,
         };
 
-        let id = db.insert_session(&session).unwrap();
+        let id = db.insert_app_session(&session).unwrap();
         db.update_session_end(id, 2000, 1000).unwrap();
 
         let sessions = db.get_sessions_today().unwrap();
@@ -488,9 +592,9 @@ mod tests {
             duration_seconds: 50,
         };
 
-        db.insert_session(&session1).unwrap();
-        db.insert_session(&session2).unwrap();
-        db.insert_session(&session3).unwrap();
+        db.insert_app_session(&session1).unwrap();
+        db.insert_app_session(&session2).unwrap();
+        db.insert_app_session(&session3).unwrap();
 
         let summary = db.get_app_usage_summary().unwrap();
         assert_eq!(summary.len(), 2);
@@ -517,7 +621,7 @@ mod tests {
             duration_seconds: 500,
         };
 
-        db.insert_session(&session).unwrap();
+        db.insert_app_session(&session).unwrap();
 
         assert_eq!(db.get_total_tracked_time_today().unwrap(), 500);
     }
@@ -536,11 +640,63 @@ mod tests {
             duration_seconds: 0,
         };
 
-        db.insert_session(&session).unwrap();
+        db.insert_app_session(&session).unwrap();
         db.end_crash_session().unwrap();
         let sessions = db.get_sessions_today().unwrap();
+        let ended_at = sessions[0].end_time.unwrap();
 
-        assert_eq!(sessions[0].end_time, Some(now));
-        assert_eq!(sessions[0].duration_seconds, 1000);
+        assert!(ended_at >= now);
+        assert!(ended_at <= chrono::Utc::now().timestamp());
+        assert_eq!(sessions[0].duration_seconds, ended_at - session.start_time);
+    }
+
+    #[test]
+    fn test_insert_close_and_get_tab_session() {
+        let (db, _dir) = create_test_db();
+        let now = chrono::Utc::now().timestamp();
+
+        let session = TabSession {
+            id: None,
+            source: "chrome".to_string(),
+            tab_url: "https://example.com".to_string(),
+            tab_title: "Example".to_string(),
+            start_time: now,
+            end_time: None,
+            duration_seconds: 0,
+        };
+
+        let id = db.insert_tab_session(&session).unwrap();
+        let sessions = db.get_tab_sessions_today().unwrap();
+
+        assert_eq!(sessions.len(), 1);
+        assert_eq!(sessions[0].source, "chrome");
+        assert_eq!(sessions[0].tab_title, "Example");
+
+        db.close_tab_session(id, now + 30, 30).unwrap();
+        let sessions = db.get_tab_sessions_today().unwrap();
+
+        assert_eq!(sessions[0].end_time, Some(now + 30));
+        assert_eq!(sessions[0].duration_seconds, 30);
+    }
+
+    #[test]
+    fn test_delete_all_tab_sessions() {
+        let (db, _dir) = create_test_db();
+        let now = chrono::Utc::now().timestamp();
+
+        let session = TabSession {
+            id: None,
+            source: "vscode".to_string(),
+            tab_url: "file:///workspace/main.rs".to_string(),
+            tab_title: "main.rs".to_string(),
+            start_time: now,
+            end_time: None,
+            duration_seconds: 0,
+        };
+
+        db.insert_tab_session(&session).unwrap();
+        db.delete_all_tab_sessions().unwrap();
+
+        assert!(db.get_tab_sessions_today().unwrap().is_empty());
     }
 }

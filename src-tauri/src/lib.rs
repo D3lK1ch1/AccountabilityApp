@@ -1,4 +1,4 @@
-use crate::database::{AppSession, BlockedApp, Database};
+use crate::database::{AppSession, BlockedApp, Database, TabSession};
 use crate::models::{DashboardStats, TrackerStatus, UsageData};
 use crate::tracking::ActivityTracker;
 use std::sync::Arc;
@@ -32,7 +32,7 @@ fn db_err(e: database::DatabaseError) -> String {
 #[tauri::command]
 async fn start_tracking(state: State<'_, AppState>) -> Result<(), String> {
     if state.tracker.lock().await.is_some() {
-        return Ok(()); // Already tracking
+        return Ok(());
     }
     let tracker = ActivityTracker::new(state.db.clone(), 3);
     let (tx, _rx) = tokio::sync::mpsc::channel::<()>(1);
@@ -129,6 +129,11 @@ async fn get_sessions_today(state: State<'_, AppState>) -> Result<Vec<AppSession
 }
 
 #[tauri::command]
+async fn get_tab_sessions_today(state: State<'_, AppState>) -> Result<Vec<TabSession>, String> {
+    state.db.get_tab_sessions_today().map_err(db_err)
+}
+
+#[tauri::command]
 async fn get_tracked_time_per_app(state: State<'_, AppState>, app_name: String) -> Result<i64, String> {
     state.db.get_tracked_time_per_app(&app_name).map_err(db_err)
 }
@@ -136,6 +141,7 @@ async fn get_tracked_time_per_app(state: State<'_, AppState>, app_name: String) 
 #[tauri::command]
 async fn clear_all_sessions(state: State<'_, AppState>) -> Result<(), String> {
     state.db.delete_all_sessions().map_err(db_err)?;
+    state.db.delete_all_tab_sessions().map_err(db_err)?;
     let tracker_lock = state.tracker.lock().await;
     if let Some(tracker) = tracker_lock.as_ref() {
         tracker.reset_sessions();
@@ -376,6 +382,7 @@ pub fn run() {
             get_tracker_status,
             get_dashboard_stats,
             get_sessions_today,
+            get_tab_sessions_today,
             get_tracked_time_per_app,
             clear_all_sessions,
             quit_app,
