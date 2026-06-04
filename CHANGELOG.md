@@ -11,9 +11,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 Planned work for future versions. Items move into a dated release section below once shipped.
 
+### Fixed
+
+- **Timer stuck at zero after clearing data** — after `Clear All Data`, the timer no longer freezes until an app switch. Two separate state machines were out of sync: the Zustand store wasn't refreshing after the DB clear, and the Rust tracking thread was holding an orphaned in-memory session pointing at a deleted row. Fixed by calling `refreshStats`/`refreshSessions` in the store after clear, and adding a `needs_reset` flag to `ActivityTracker` so the thread drops its stale session on the next poll tick and immediately starts a fresh one.
+
 ### Planned
 
 - **App blocking UI** — frontend surface for the existing `add_blocked_app` / `remove_blocked_app` / `get_blocked_apps` backend commands.
+- **Tab session bridge** — frontend and backend read paths now exist for `tab_sessions`; browser/editor clients are still pending.
 - **AI therapist chatbot** — personalised advice based on tracked usage, powered by a local LLM via [Ollama](https://ollama.com/).
 
 ### Platform Expansion (Future Versions)
@@ -50,7 +55,8 @@ Initial pre-beta release. Core activity tracking is functional; blocking and AI 
 - Backend blocking data layer (`add_blocked_app`, `remove_blocked_app`, `get_blocked_apps`) — backend-only, no UI yet.
 - **macOS active window tracking** — merged via PR #1; `active-win-pos-rs` now covers both Windows and macOS.
 - **CI pipeline** — GitHub Actions running `npm test` (frontend), `cargo test` on Ubuntu (backend), and `cargo test` on macOS. Missing: Windows runner and a Tauri build check.
-- **Encrypted local database** — SQLCipher bundled via `rusqlite` feature flag. Key management is being wired up; key source strategy (env var → OS keychain).
+- **Encrypted local database** — SQLCipher bundled via `rusqlite`; the database key is stored in the OS keychain.
+- **Safer key-loss handling** — when the OS keychain entry is missing, the unreadable database is moved aside instead of being deleted.
 
 ### Known Limitations
 
