@@ -28,3 +28,6 @@ AGENTS.md
 Notes.md
 .claude/
 
+# Large local media (demo recordings etc.) - host externally, don't commit
+*.mp4
+
