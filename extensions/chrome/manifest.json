@@ -1,0 +1,18 @@
+{
+  "manifest_version": 3,
+  "name": "Accountability Tab Blocker",
+  "version": "0.1.0",
+  "description": "Tracks active tabs and blocks over-limit categories through the local Accountability App.",
+  "permissions": ["tabs", "windows", "scripting", "storage"],
+  "host_permissions": ["<all_urls>"],
+  "background": {
+    "service_worker": "background.js",
+    "type": "module"
+  },
+  "web_accessible_resources": [
+    {
+      "resources": ["overlay.js", "deterrents/*.html"],
+      "matches": ["<all_urls>"]
+    }
+  ]
+}
