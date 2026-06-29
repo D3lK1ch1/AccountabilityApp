@@ -24,15 +24,22 @@ export function Widget() {
     currentWindowTitle,
     stats,
     sessions,
+    blockCategories,
+    categoryUsage,
     isExpanded,
     lastError,
     setExpanded,
     toggleTracking,
     refreshStats,
     refreshSessions,
+    refreshBlockCategories,
+    refreshCategoryUsage,
     startTracking,
     stopTracking,
     clearAllSessions,
+    saveBlockCategory,
+    setBlockCategoryEnabled,
+    setBlockCategoryPaused,
   } = useAppStore();
 
   const [show, setShow] = useState(false);
@@ -45,7 +52,9 @@ export function Widget() {
 
   useEffect(() => {
     startTracking();
-  }, [startTracking]);
+    refreshBlockCategories();
+    refreshCategoryUsage();
+  }, [startTracking, refreshBlockCategories, refreshCategoryUsage]);
 
   useEffect(() => {
     if (isExpanded) {
@@ -57,11 +66,12 @@ export function Widget() {
     const interval = setInterval(() => {
       if (isTracking) {
         refreshStats();
+        refreshCategoryUsage();
       }
     }, 3000);
 
     return () => clearInterval(interval);
-  }, [isTracking, refreshStats]);
+  }, [isTracking, refreshStats, refreshCategoryUsage]);
 
   useEffect(() => {
     const interval = setInterval(() => {
@@ -90,6 +100,28 @@ export function Widget() {
   const appName = (currentApp ?? '').toLowerCase();
   const showWindowTitle = appName.includes('chrome') || appName.includes('visual studio');
   const detailTitle = showWindowTitle ? currentWindowTitle : null;
+  const usageByCategoryId = new Map(categoryUsage.map((usage) => [usage.category_id, usage]));
+
+  const handleLimitChange = (categoryId: number | null, value: string) => {
+    const category = blockCategories.find((item) => item.id === categoryId);
+    if (!category) return;
+    const daily_limit_minutes = Math.max(1, Number.parseInt(value, 10) || 1);
+    saveBlockCategory({ ...category, daily_limit_minutes });
+  };
+
+  const handleKeywordsChange = (
+    categoryId: number | null,
+    field: 'domain_keywords' | 'app_keywords',
+    value: string,
+  ) => {
+    const category = blockCategories.find((item) => item.id === categoryId);
+    if (!category) return;
+    const keywords = value
+      .split(',')
+      .map((keyword) => keyword.trim())
+      .filter(Boolean);
+    saveBlockCategory({ ...category, [field]: keywords });
+  };
 
   return (
     <div className={`widget ${isExpanded ? 'expanded' : ''}`}>
@@ -190,6 +222,81 @@ export function Widget() {
               <div className="activity-subvalue" title={detailTitle}>
                 {detailTitle}
               </div>
+            )}
+          </div>
+
+          <div className="block-categories">
+            <div className="sessions-header">Category Limits</div>
+            {blockCategories.length > 0 ? (
+              blockCategories.map((category) => {
+                const usage = category.id === null ? undefined : usageByCategoryId.get(category.id);
+                const usedSeconds = usage?.used_seconds ?? 0;
+                const limitSeconds = usage?.limit_seconds ?? category.daily_limit_minutes * 60;
+                const percent = limitSeconds > 0 ? Math.min(100, (usedSeconds / limitSeconds) * 100) : 0;
+
+                return (
+                  <div key={category.id ?? category.name} className="category-item">
+                    <div className="category-top">
+                      <span className="category-name">{category.name}</span>
+                      <span className={`category-status ${usage?.limit_exceeded ? 'over' : ''}`}>
+                        {formatDuration(usedSeconds)} / {formatDuration(limitSeconds)}
+                      </span>
+                    </div>
+                    <div className="category-bar">
+                      <div className="category-fill" style={{ width: `${percent}%` }} />
+                    </div>
+                    <div className="category-controls">
+                      <label>
+                        Limit
+                        <input
+                          type="number"
+                          min="1"
+                          value={category.daily_limit_minutes}
+                          onChange={(e) => handleLimitChange(category.id, e.target.value)}
+                        />
+                      </label>
+                      <label>
+                        Enabled
+                        <input
+                          type="checkbox"
+                          checked={category.enabled}
+                          onChange={(e) => {
+                            if (category.id !== null) {
+                              setBlockCategoryEnabled(category.id, e.target.checked);
+                            }
+                          }}
+                        />
+                      </label>
+                      <label>
+                        Paused
+                        <input
+                          type="checkbox"
+                          checked={category.manual_block_paused}
+                          onChange={(e) => {
+                            if (category.id !== null) {
+                              setBlockCategoryPaused(category.id, e.target.checked);
+                            }
+                          }}
+                        />
+                      </label>
+                    </div>
+                    <input
+                      className="keyword-input"
+                      value={category.domain_keywords.join(', ')}
+                      onChange={(e) => handleKeywordsChange(category.id, 'domain_keywords', e.target.value)}
+                      aria-label={`${category.name} domains`}
+                    />
+                    <input
+                      className="keyword-input"
+                      value={category.app_keywords.join(', ')}
+                      onChange={(e) => handleKeywordsChange(category.id, 'app_keywords', e.target.value)}
+                      aria-label={`${category.name} apps`}
+                    />
+                  </div>
+                );
+              })
+            ) : (
+              <div className="sessions-empty">No category limits yet</div>
             )}
           </div>
 

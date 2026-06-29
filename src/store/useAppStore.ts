@@ -46,6 +46,27 @@ interface BlockedApp {
   enabled: boolean;
 }
 
+interface BlockCategory {
+  id: number | null;
+  name: string;
+  daily_limit_minutes: number;
+  enabled: boolean;
+  manual_block_paused: boolean;
+  domain_keywords: string[];
+  app_keywords: string[];
+  display_order: number;
+}
+
+interface CategoryUsage {
+  category_id: number;
+  category_name: string;
+  used_seconds: number;
+  limit_seconds: number;
+  limit_exceeded: boolean;
+  enabled: boolean;
+  manual_block_paused: boolean;
+}
+
 interface AppStore {
   isTracking: boolean;
   currentApp: string | null;
@@ -55,6 +76,8 @@ interface AppStore {
   sessions: AppSession[];
   tabSessions: TabSession[];
   blockedApps: BlockedApp[];
+  blockCategories: BlockCategory[];
+  categoryUsage: CategoryUsage[];
   isExpanded: boolean;
   isLoading: boolean;
   lastError: string | null;
@@ -71,6 +94,11 @@ interface AppStore {
   addBlockedApp: (appName: string, duration: number) => Promise<void>;
   removeBlockedApp: (appName: string) => Promise<void>;
   refreshBlockedApps: () => Promise<void>;
+  refreshBlockCategories: () => Promise<void>;
+  refreshCategoryUsage: () => Promise<void>;
+  saveBlockCategory: (category: BlockCategory) => Promise<void>;
+  setBlockCategoryEnabled: (categoryId: number, enabled: boolean) => Promise<void>;
+  setBlockCategoryPaused: (categoryId: number, paused: boolean) => Promise<void>;
 }
 
 export const useAppStore = create<AppStore>((set, get) => ({
@@ -82,6 +110,8 @@ export const useAppStore = create<AppStore>((set, get) => ({
   sessions: [],
   tabSessions: [],
   blockedApps: [],
+  blockCategories: [],
+  categoryUsage: [],
   isExpanded: true,
   isLoading: false,
   lastError: null,
@@ -221,6 +251,59 @@ export const useAppStore = create<AppStore>((set, get) => ({
     } catch (e) {
       set({ lastError: 'Failed to refresh blocked apps.' });
       console.error('Failed to refresh blocked apps:', e);
+    }
+  },
+
+  refreshBlockCategories: async () => {
+    try {
+      const blockCategories = await invoke<BlockCategory[]>('get_block_categories');
+      set({ blockCategories, lastError: null });
+    } catch (e) {
+      set({ lastError: 'Failed to refresh block categories.' });
+      console.error('Failed to refresh block categories:', e);
+    }
+  },
+
+  refreshCategoryUsage: async () => {
+    try {
+      const categoryUsage = await invoke<CategoryUsage[]>('get_category_usage_today');
+      set({ categoryUsage, lastError: null });
+    } catch (e) {
+      set({ lastError: 'Failed to refresh category usage.' });
+      console.error('Failed to refresh category usage:', e);
+    }
+  },
+
+  saveBlockCategory: async (category) => {
+    try {
+      await invoke('upsert_block_category', { category });
+      await get().refreshBlockCategories();
+      await get().refreshCategoryUsage();
+    } catch (e) {
+      set({ lastError: 'Failed to save block category.' });
+      console.error('Failed to save block category:', e);
+    }
+  },
+
+  setBlockCategoryEnabled: async (categoryId, enabled) => {
+    try {
+      await invoke('set_block_category_enabled', { categoryId, enabled });
+      await get().refreshBlockCategories();
+      await get().refreshCategoryUsage();
+    } catch (e) {
+      set({ lastError: 'Failed to update block category.' });
+      console.error('Failed to update block category:', e);
+    }
+  },
+
+  setBlockCategoryPaused: async (categoryId, paused) => {
+    try {
+      await invoke('set_block_category_paused', { categoryId, paused });
+      await get().refreshBlockCategories();
+      await get().refreshCategoryUsage();
+    } catch (e) {
+      set({ lastError: 'Failed to update category pause.' });
+      console.error('Failed to update category pause:', e);
     }
   },
 }));
