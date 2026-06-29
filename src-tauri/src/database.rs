@@ -1,5 +1,5 @@
 use chrono::Utc;
-use rusqlite::{params, Connection};
+use rusqlite::{params, Connection, OptionalExtension};
 use serde::{Deserialize, Serialize};
 use std::path::PathBuf;
 use std::sync::Mutex;
@@ -48,6 +48,40 @@ pub struct BlockedApp {
     pub block_duration_minutes: i32,
     pub enabled: bool,
 }
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct BlockCategory {
+    pub id: Option<i64>,
+    pub name: String,
+    pub daily_limit_minutes: i32,
+    pub enabled: bool,
+    pub manual_block_paused: bool,
+    pub domain_keywords: Vec<String>,
+    pub app_keywords: Vec<String>,
+    pub display_order: i32,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct CategoryUsage {
+    pub category_id: i64,
+    pub category_name: String,
+    pub used_seconds: i64,
+    pub limit_seconds: i64,
+    pub limit_exceeded: bool,
+    pub enabled: bool,
+    pub manual_block_paused: bool,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct BlockDecision {
+    pub blocked: bool,
+    pub category_id: Option<i64>,
+    pub category_name: Option<String>,
+    pub used_seconds: i64,
+    pub limit_seconds: i64,
+    pub deterrent_mode: String,
+    pub popup_interval_ms: i32,
+}
 pub struct Database {
     conn: Mutex<Connection>,
 }
@@ -89,6 +123,7 @@ impl Database {
         };
 
         db.initialize()?;
+        db.seed_default_block_categories()?;
         Ok(db)
     }
 
@@ -158,7 +193,102 @@ impl Database {
             [],
         )?;
 
+        conn.execute(
+            "CREATE TABLE IF NOT EXISTS block_categories (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                name TEXT NOT NULL UNIQUE,
+                daily_limit_minutes INTEGER NOT NULL,
+                enabled BOOLEAN DEFAULT 1,
+                manual_block_paused BOOLEAN DEFAULT 0,
+                domain_keywords TEXT NOT NULL,
+                app_keywords TEXT NOT NULL,
+                display_order INTEGER NOT NULL DEFAULT 0
+            )",
+            [],
+        )?;
+
         log::info!("Database tables initialized");
+        Ok(())
+    }
+
+    fn seed_default_block_categories(&self) -> DbResult<()> {
+        if !self.get_block_categories()?.is_empty() {
+            return Ok(());
+        }
+
+        let defaults = [
+            BlockCategory {
+                id: None,
+                name: "Social Media".to_string(),
+                daily_limit_minutes: 60,
+                enabled: true,
+                manual_block_paused: false,
+                domain_keywords: vec![
+                    "x.com",
+                    "twitter.com",
+                    "instagram.com",
+                    "facebook.com",
+                    "tiktok.com",
+                    "reddit.com",
+                    "threads.net",
+                    "snapchat.com",
+                    "linkedin.com",
+                    "pinterest.com",
+                ]
+                .into_iter()
+                .map(str::to_string)
+                .collect(),
+                app_keywords: vec![
+                    "discord",
+                    "instagram",
+                    "facebook",
+                    "tiktok",
+                    "twitter",
+                    "reddit",
+                ]
+                .into_iter()
+                .map(str::to_string)
+                .collect(),
+                display_order: 0,
+            },
+            BlockCategory {
+                id: None,
+                name: "Games".to_string(),
+                daily_limit_minutes: 60,
+                enabled: true,
+                manual_block_paused: false,
+                domain_keywords: vec![
+                    "steampowered.com",
+                    "steamcommunity.com",
+                    "epicgames.com",
+                    "itch.io",
+                    "roblox.com",
+                    "minecraft.net",
+                    "battle.net",
+                ]
+                .into_iter()
+                .map(str::to_string)
+                .collect(),
+                app_keywords: vec![
+                    "steam",
+                    "epic games",
+                    "battle.net",
+                    "riot client",
+                    "roblox",
+                    "minecraft",
+                    "game",
+                ]
+                .into_iter()
+                .map(str::to_string)
+                .collect(),
+                display_order: 1,
+            },
+        ];
+
+        for category in defaults {
+            self.upsert_block_category(&category)?;
+        }
+
         Ok(())
     }
 
@@ -344,6 +474,53 @@ impl Database {
         Ok(())
     }
 
+    pub fn get_open_tab_session_for_source(
+        &self,
+        source: &str,
+    ) -> DbResult<Option<(i64, i64)>> {
+        let conn = self.conn.lock().map_err(|_| DatabaseError::Lock)?;
+
+        let result = conn
+            .query_row(
+                "SELECT id, start_time FROM tab_sessions
+                 WHERE source = ?1 AND end_time IS NULL
+                 ORDER BY start_time DESC LIMIT 1",
+                [source],
+                |row| Ok((row.get::<_, i64>(0)?, row.get::<_, i64>(1)?)),
+            )
+            .optional()?;
+
+        Ok(result)
+    }
+
+    pub fn finalize_open_tab_sessions(&self, source: &str, now: i64) -> DbResult<()> {
+        let conn = self.conn.lock().map_err(|_| DatabaseError::Lock)?;
+
+        conn.execute(
+            "UPDATE tab_sessions
+             SET end_time = ?1, duration_seconds = (?1 - start_time)
+             WHERE source = ?2 AND end_time IS NULL",
+            params![now, source],
+        )?;
+
+        Ok(())
+    }
+
+    pub fn end_crash_tab_sessions(&self) -> DbResult<()> {
+        let conn = self.conn.lock().map_err(|_| DatabaseError::Lock)?;
+
+        let now = Utc::now().timestamp();
+
+        conn.execute(
+            "UPDATE tab_sessions
+             SET end_time = ?1, duration_seconds = (?1 - start_time)
+             WHERE end_time IS NULL AND start_time <= ?1",
+            [now],
+        )?;
+
+        Ok(())
+    }
+
     pub fn get_total_tracked_time_today(&self) -> DbResult<i64> {
         let conn = self.conn.lock().map_err(|_| DatabaseError::Lock)?;
 
@@ -466,6 +643,258 @@ impl Database {
             Err(rusqlite::Error::QueryReturnedNoRows) => Ok(None),
             Err(e) => Err(e.into()),
         }
+    }
+
+    pub fn get_block_categories(&self) -> DbResult<Vec<BlockCategory>> {
+        let conn = self.conn.lock().map_err(|_| DatabaseError::Lock)?;
+
+        let mut stmt = conn.prepare(
+            "SELECT id, name, daily_limit_minutes, enabled, manual_block_paused,
+                domain_keywords, app_keywords, display_order
+             FROM block_categories
+             ORDER BY display_order ASC, name ASC",
+        )?;
+
+        let categories = stmt
+            .query_map([], |row| {
+                let domain_keywords: String = row.get(5)?;
+                let app_keywords: String = row.get(6)?;
+                Ok(BlockCategory {
+                    id: Some(row.get(0)?),
+                    name: row.get(1)?,
+                    daily_limit_minutes: row.get(2)?,
+                    enabled: row.get(3)?,
+                    manual_block_paused: row.get(4)?,
+                    domain_keywords: serde_json::from_str(&domain_keywords).unwrap_or_default(),
+                    app_keywords: serde_json::from_str(&app_keywords).unwrap_or_default(),
+                    display_order: row.get(7)?,
+                })
+            })?
+            .collect::<Result<Vec<_>, _>>()?;
+
+        Ok(categories)
+    }
+
+    pub fn upsert_block_category(&self, category: &BlockCategory) -> DbResult<i64> {
+        let conn = self.conn.lock().map_err(|_| DatabaseError::Lock)?;
+        let domain_keywords = serde_json::to_string(&category.domain_keywords)
+            .unwrap_or_else(|_| "[]".to_string());
+        let app_keywords =
+            serde_json::to_string(&category.app_keywords).unwrap_or_else(|_| "[]".to_string());
+
+        if let Some(id) = category.id {
+            conn.execute(
+                "UPDATE block_categories
+                 SET name = ?1, daily_limit_minutes = ?2, enabled = ?3,
+                    manual_block_paused = ?4, domain_keywords = ?5, app_keywords = ?6,
+                    display_order = ?7
+                 WHERE id = ?8",
+                params![
+                    category.name,
+                    category.daily_limit_minutes,
+                    category.enabled,
+                    category.manual_block_paused,
+                    domain_keywords,
+                    app_keywords,
+                    category.display_order,
+                    id,
+                ],
+            )?;
+            Ok(id)
+        } else {
+            conn.execute(
+                "INSERT INTO block_categories
+                    (name, daily_limit_minutes, enabled, manual_block_paused,
+                     domain_keywords, app_keywords, display_order)
+                 VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)
+                 ON CONFLICT(name) DO UPDATE SET
+                    daily_limit_minutes = excluded.daily_limit_minutes,
+                    enabled = excluded.enabled,
+                    manual_block_paused = excluded.manual_block_paused,
+                    domain_keywords = excluded.domain_keywords,
+                    app_keywords = excluded.app_keywords,
+                    display_order = excluded.display_order",
+                params![
+                    category.name,
+                    category.daily_limit_minutes,
+                    category.enabled,
+                    category.manual_block_paused,
+                    domain_keywords,
+                    app_keywords,
+                    category.display_order,
+                ],
+            )?;
+            Ok(conn.last_insert_rowid())
+        }
+    }
+
+    pub fn set_block_category_enabled(&self, category_id: i64, enabled: bool) -> DbResult<()> {
+        let conn = self.conn.lock().map_err(|_| DatabaseError::Lock)?;
+        conn.execute(
+            "UPDATE block_categories SET enabled = ?1 WHERE id = ?2",
+            params![enabled, category_id],
+        )?;
+        Ok(())
+    }
+
+    pub fn set_block_category_paused(&self, category_id: i64, paused: bool) -> DbResult<()> {
+        let conn = self.conn.lock().map_err(|_| DatabaseError::Lock)?;
+        conn.execute(
+            "UPDATE block_categories SET manual_block_paused = ?1 WHERE id = ?2",
+            params![paused, category_id],
+        )?;
+        Ok(())
+    }
+
+    pub fn get_category_usage_today(&self) -> DbResult<Vec<CategoryUsage>> {
+        let categories = self.get_block_categories()?;
+        let app_sessions = self.get_sessions_today()?;
+        let tab_sessions = self.get_tab_sessions_today()?;
+        let now = Utc::now().timestamp();
+
+        let usages = categories
+            .iter()
+            .filter_map(|category| {
+                category.id.map(|category_id| {
+                    let app_seconds = app_sessions
+                        .iter()
+                        .filter(|session| app_matches_category(session, category))
+                        .map(|session| session_seconds(session.start_time, session.end_time, session.duration_seconds, now))
+                        .sum::<i64>();
+                    let tab_seconds = tab_sessions
+                        .iter()
+                        .filter(|session| tab_matches_category(session, category))
+                        .map(|session| session_seconds(session.start_time, session.end_time, session.duration_seconds, now))
+                        .sum::<i64>();
+                    let used_seconds = app_seconds + tab_seconds;
+                    let limit_seconds = i64::from(category.daily_limit_minutes.max(0)) * 60;
+
+                    CategoryUsage {
+                        category_id,
+                        category_name: category.name.clone(),
+                        used_seconds,
+                        limit_seconds,
+                        limit_exceeded: limit_seconds > 0 && used_seconds >= limit_seconds,
+                        enabled: category.enabled,
+                        manual_block_paused: category.manual_block_paused,
+                    }
+                })
+            })
+            .collect();
+
+        Ok(usages)
+    }
+
+    pub fn evaluate_tab_block(&self, tab_url: &str, tab_title: &str) -> DbResult<BlockDecision> {
+        let categories = self.get_block_categories()?;
+        let usages = self.get_category_usage_today()?;
+        let probe = TabSession {
+            id: None,
+            source: "probe".to_string(),
+            tab_url: tab_url.to_string(),
+            tab_title: tab_title.to_string(),
+            start_time: Utc::now().timestamp(),
+            end_time: None,
+            duration_seconds: 0,
+        };
+
+        for category in categories {
+            if !category.enabled || category.manual_block_paused {
+                continue;
+            }
+            if !tab_matches_category(&probe, &category) {
+                continue;
+            }
+            if let Some(category_id) = category.id {
+                if let Some(usage) = usages.iter().find(|u| u.category_id == category_id) {
+                    if usage.limit_exceeded {
+                        return Ok(BlockDecision {
+                            blocked: true,
+                            category_id: Some(category_id),
+                            category_name: Some(category.name),
+                            used_seconds: usage.used_seconds,
+                            limit_seconds: usage.limit_seconds,
+                            deterrent_mode: "rotating_mix".to_string(),
+                            popup_interval_ms: 5000,
+                        });
+                    }
+                }
+            }
+        }
+
+        Ok(BlockDecision {
+            blocked: false,
+            category_id: None,
+            category_name: None,
+            used_seconds: 0,
+            limit_seconds: 0,
+            deterrent_mode: "none".to_string(),
+            popup_interval_ms: 0,
+        })
+    }
+}
+
+fn session_seconds(start_time: i64, end_time: Option<i64>, duration_seconds: i64, now: i64) -> i64 {
+    match end_time {
+        Some(_) => duration_seconds.max(0),
+        None => (now - start_time).max(0),
+    }
+}
+
+fn app_matches_category(session: &AppSession, category: &BlockCategory) -> bool {
+    let mut haystack = session.app_name.to_lowercase();
+    if let Some(title) = &session.window_title {
+        haystack.push(' ');
+        haystack.push_str(&title.to_lowercase());
+    }
+    contains_keyword(&haystack, &category.app_keywords)
+}
+
+fn tab_matches_category(session: &TabSession, category: &BlockCategory) -> bool {
+    let title = session.tab_title.to_lowercase();
+    let url = session.tab_url.to_lowercase();
+    let host = host_from_url(&url);
+    contains_domain_keyword(host.as_deref(), &category.domain_keywords)
+        || contains_keyword(&title, &category.domain_keywords)
+        || contains_keyword(&url, &category.domain_keywords)
+}
+
+fn contains_keyword(haystack: &str, keywords: &[String]) -> bool {
+    keywords
+        .iter()
+        .map(|keyword| keyword.trim().to_lowercase())
+        .filter(|keyword| !keyword.is_empty())
+        .any(|keyword| haystack.contains(&keyword))
+}
+
+fn contains_domain_keyword(host: Option<&str>, keywords: &[String]) -> bool {
+    let Some(host) = host else {
+        return false;
+    };
+    keywords
+        .iter()
+        .map(|keyword| keyword.trim().trim_start_matches("*.").to_lowercase())
+        .filter(|keyword| !keyword.is_empty())
+        .any(|keyword| host == keyword || host.ends_with(&format!(".{}", keyword)))
+}
+
+fn host_from_url(url: &str) -> Option<String> {
+    let after_scheme = url.split_once("://").map(|(_, rest)| rest).unwrap_or(url);
+    let authority = after_scheme.split(['/', '?', '#']).next().unwrap_or("");
+    let host = authority
+        .split('@')
+        .next_back()
+        .unwrap_or("")
+        .split(':')
+        .next()
+        .unwrap_or("")
+        .trim()
+        .trim_start_matches("www.");
+
+    if host.is_empty() {
+        None
+    } else {
+        Some(host.to_string())
     }
 }
 
@@ -698,5 +1127,228 @@ mod tests {
         db.delete_all_tab_sessions().unwrap();
 
         assert!(db.get_tab_sessions_today().unwrap().is_empty());
+    }
+
+    #[test]
+    fn test_finalize_open_tab_sessions_by_source() {
+        let (db, _dir) = create_test_db();
+        let now = chrono::Utc::now().timestamp();
+
+        let chrome_session = TabSession {
+            id: None,
+            source: "chrome".to_string(),
+            tab_url: "https://example.com".to_string(),
+            tab_title: "Example".to_string(),
+            start_time: now,
+            end_time: None,
+            duration_seconds: 0,
+        };
+        let vscode_session = TabSession {
+            id: None,
+            source: "vscode".to_string(),
+            tab_url: "file:///main.rs".to_string(),
+            tab_title: "main.rs".to_string(),
+            start_time: now,
+            end_time: None,
+            duration_seconds: 0,
+        };
+
+        db.insert_tab_session(&chrome_session).unwrap();
+        db.insert_tab_session(&chrome_session).unwrap();
+        db.insert_tab_session(&vscode_session).unwrap();
+
+        db.finalize_open_tab_sessions("chrome", now + 60).unwrap();
+
+        let sessions = db.get_tab_sessions_today().unwrap();
+        let chrome_sessions: Vec<_> = sessions.iter().filter(|s| s.source == "chrome").collect();
+        let vscode_sessions: Vec<_> = sessions.iter().filter(|s| s.source == "vscode").collect();
+
+        assert!(chrome_sessions.iter().all(|s| s.end_time.is_some()));
+        assert!(vscode_sessions.iter().all(|s| s.end_time.is_none()));
+    }
+
+    #[test]
+    fn test_end_crash_tab_sessions() {
+        let (db, _dir) = create_test_db();
+        let now = chrono::Utc::now().timestamp();
+
+        for source in &["chrome", "vscode"] {
+            db.insert_tab_session(&TabSession {
+                id: None,
+                source: source.to_string(),
+                tab_url: "https://example.com".to_string(),
+                tab_title: "Example".to_string(),
+                start_time: now,
+                end_time: None,
+                duration_seconds: 0,
+            })
+            .unwrap();
+        }
+
+        db.end_crash_tab_sessions().unwrap();
+
+        let sessions = db.get_tab_sessions_today().unwrap();
+        assert!(sessions.iter().all(|s| s.end_time.is_some()));
+        assert!(sessions.iter().all(|s| s.duration_seconds >= 0));
+    }
+
+    #[test]
+    fn test_source_isolation() {
+        let (db, _dir) = create_test_db();
+        let now = chrono::Utc::now().timestamp();
+
+        db.insert_tab_session(&TabSession {
+            id: None,
+            source: "chrome".to_string(),
+            tab_url: "https://example.com".to_string(),
+            tab_title: "Chrome Tab".to_string(),
+            start_time: now,
+            end_time: None,
+            duration_seconds: 0,
+        })
+        .unwrap();
+
+        db.insert_tab_session(&TabSession {
+            id: None,
+            source: "vscode".to_string(),
+            tab_url: "file:///main.rs".to_string(),
+            tab_title: "main.rs".to_string(),
+            start_time: now,
+            end_time: None,
+            duration_seconds: 0,
+        })
+        .unwrap();
+
+        let chrome_open = db.get_open_tab_session_for_source("chrome").unwrap();
+        let vscode_open = db.get_open_tab_session_for_source("vscode").unwrap();
+
+        assert!(chrome_open.is_some());
+        assert!(vscode_open.is_some());
+
+        // closing chrome does not affect vscode
+        let (chrome_id, _) = chrome_open.unwrap();
+        db.close_tab_session(chrome_id, now + 10, 10).unwrap();
+
+        assert!(db.get_open_tab_session_for_source("chrome").unwrap().is_none());
+        assert!(db.get_open_tab_session_for_source("vscode").unwrap().is_some());
+    }
+
+    #[test]
+    fn test_default_block_categories_seeded() {
+        let (db, _dir) = create_test_db();
+        let categories = db.get_block_categories().unwrap();
+
+        assert!(categories.iter().any(|c| c.name == "Social Media"));
+        assert!(categories.iter().any(|c| c.name == "Games"));
+    }
+
+    #[test]
+    fn test_category_usage_counts_tabs_and_apps() {
+        let (db, _dir) = create_test_db();
+        let now = chrono::Utc::now().timestamp();
+
+        db.insert_tab_session(&TabSession {
+            id: None,
+            source: "chrome".to_string(),
+            tab_url: "https://instagram.com/direct".to_string(),
+            tab_title: "Instagram".to_string(),
+            start_time: now,
+            end_time: Some(now + 120),
+            duration_seconds: 120,
+        })
+        .unwrap();
+        db.insert_app_session(&AppSession {
+            id: None,
+            app_name: "Discord".to_string(),
+            window_title: Some("Friends".to_string()),
+            start_time: now,
+            end_time: Some(now + 60),
+            duration_seconds: 60,
+        })
+        .unwrap();
+
+        let usages = db.get_category_usage_today().unwrap();
+        let social = usages
+            .iter()
+            .find(|usage| usage.category_name == "Social Media")
+            .unwrap();
+
+        assert_eq!(social.used_seconds, 180);
+    }
+
+    #[test]
+    fn test_evaluate_tab_block_after_limit_exceeded() {
+        let (db, _dir) = create_test_db();
+        let now = chrono::Utc::now().timestamp();
+        let mut social = db
+            .get_block_categories()
+            .unwrap()
+            .into_iter()
+            .find(|category| category.name == "Social Media")
+            .unwrap();
+        social.daily_limit_minutes = 1;
+        db.upsert_block_category(&social).unwrap();
+
+        db.insert_tab_session(&TabSession {
+            id: None,
+            source: "chrome".to_string(),
+            tab_url: "https://x.com/home".to_string(),
+            tab_title: "X".to_string(),
+            start_time: now,
+            end_time: Some(now + 60),
+            duration_seconds: 60,
+        })
+        .unwrap();
+
+        let decision = db
+            .evaluate_tab_block("https://instagram.com/reels", "Instagram")
+            .unwrap();
+
+        assert!(decision.blocked);
+        assert_eq!(decision.category_name, Some("Social Media".to_string()));
+    }
+
+    #[test]
+    fn test_evaluate_tab_block_respects_manual_pause() {
+        let (db, _dir) = create_test_db();
+        let now = chrono::Utc::now().timestamp();
+        let mut social = db
+            .get_block_categories()
+            .unwrap()
+            .into_iter()
+            .find(|category| category.name == "Social Media")
+            .unwrap();
+        social.daily_limit_minutes = 1;
+        db.upsert_block_category(&social).unwrap();
+        db.set_block_category_paused(social.id.unwrap(), true).unwrap();
+
+        db.insert_tab_session(&TabSession {
+            id: None,
+            source: "chrome".to_string(),
+            tab_url: "https://reddit.com/r/rust".to_string(),
+            tab_title: "Reddit".to_string(),
+            start_time: now,
+            end_time: Some(now + 120),
+            duration_seconds: 120,
+        })
+        .unwrap();
+
+        let decision = db
+            .evaluate_tab_block("https://reddit.com/r/games", "Reddit")
+            .unwrap();
+
+        assert!(!decision.blocked);
+    }
+
+    #[test]
+    fn test_domain_keyword_matches_subdomain() {
+        assert!(contains_domain_keyword(
+            Some("mobile.twitter.com"),
+            &[String::from("twitter.com")]
+        ));
+        assert!(!contains_domain_keyword(
+            Some("notwitter.com"),
+            &[String::from("twitter.com")]
+        ));
     }
 }

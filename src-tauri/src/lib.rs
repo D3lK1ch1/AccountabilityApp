@@ -1,4 +1,6 @@
-use crate::database::{AppSession, BlockedApp, Database, TabSession};
+use crate::database::{
+    AppSession, BlockCategory, BlockDecision, BlockedApp, CategoryUsage, Database, TabSession,
+};
 use crate::models::{DashboardStats, TrackerStatus, UsageData};
 use crate::tracking::ActivityTracker;
 use std::sync::Arc;
@@ -12,6 +14,7 @@ use tokio::sync::Mutex;
 mod database;
 mod models;
 mod tracking;
+mod websocket;
 
 struct AppState {
     db: Arc<Database>,
@@ -178,6 +181,57 @@ async fn get_blocked_apps(state: State<'_, AppState>) -> Result<Vec<BlockedApp>,
 #[tauri::command]
 async fn remove_blocked_app(state: State<'_, AppState>, app_name: String) -> Result<(), String> {
     state.db.remove_blocked_app(&app_name).map_err(db_err)
+}
+
+#[tauri::command]
+async fn get_block_categories(state: State<'_, AppState>) -> Result<Vec<BlockCategory>, String> {
+    state.db.get_block_categories().map_err(db_err)
+}
+
+#[tauri::command]
+async fn upsert_block_category(
+    state: State<'_, AppState>,
+    category: BlockCategory,
+) -> Result<i64, String> {
+    state.db.upsert_block_category(&category).map_err(db_err)
+}
+
+#[tauri::command]
+async fn set_block_category_enabled(
+    state: State<'_, AppState>,
+    category_id: i64,
+    enabled: bool,
+) -> Result<(), String> {
+    state
+        .db
+        .set_block_category_enabled(category_id, enabled)
+        .map_err(db_err)
+}
+
+#[tauri::command]
+async fn set_block_category_paused(
+    state: State<'_, AppState>,
+    category_id: i64,
+    paused: bool,
+) -> Result<(), String> {
+    state
+        .db
+        .set_block_category_paused(category_id, paused)
+        .map_err(db_err)
+}
+
+#[tauri::command]
+async fn get_category_usage_today(state: State<'_, AppState>) -> Result<Vec<CategoryUsage>, String> {
+    state.db.get_category_usage_today().map_err(db_err)
+}
+
+#[tauri::command]
+async fn evaluate_tab_block(
+    state: State<'_, AppState>,
+    tab_url: String,
+    tab_title: String,
+) -> Result<BlockDecision, String> {
+    state.db.evaluate_tab_block(&tab_url, &tab_title).map_err(db_err)
 }
 
 #[tauri::command]
@@ -356,6 +410,12 @@ pub fn run() {
                 stop_tracker_tx: Arc::new(Mutex::new(None)),
             });
 
+            let db_ws = db.clone();
+            tauri::async_runtime::spawn(async move {
+                websocket::run_ws_server(db_ws).await;
+            });
+            db.end_crash_tab_sessions().expect("crash tab recovery failed");
+
             setup_tray(app.handle())?;
             setup_global_shortcut(app.handle())?;
             
@@ -389,6 +449,12 @@ pub fn run() {
             add_blocked_app,
             get_blocked_apps,
             remove_blocked_app,
+            get_block_categories,
+            upsert_block_category,
+            set_block_category_enabled,
+            set_block_category_paused,
+            get_category_usage_today,
+            evaluate_tab_block,
             set_setting,
             get_setting,
             set_widget_expanded,
