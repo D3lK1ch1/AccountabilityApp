@@ -24,6 +24,8 @@ const mockStore = {
   sessions: [],
   tabSessions: [],
   blockedApps: [],
+  blockCategories: [],
+  categoryUsage: [],
   isExpanded: true,
   isLoading: false,
   lastError: null,
@@ -38,6 +40,11 @@ const mockStore = {
   addBlockedApp: vi.fn(),
   removeBlockedApp: vi.fn(),
   refreshBlockedApps: vi.fn(),
+  refreshBlockCategories: vi.fn(),
+  refreshCategoryUsage: vi.fn(),
+  saveBlockCategory: vi.fn(),
+  setBlockCategoryEnabled: vi.fn(),
+  setBlockCategoryPaused: vi.fn(),
 };
 
 beforeEach(() => {

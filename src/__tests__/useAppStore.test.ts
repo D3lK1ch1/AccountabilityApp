@@ -16,6 +16,8 @@ describe('useAppStore', () => {
       sessions: [],
       tabSessions: [],
       blockedApps: [],
+      blockCategories: [],
+      categoryUsage: [],
       isExpanded: true,
       isLoading: false,
       lastError: null,
@@ -30,6 +32,8 @@ describe('useAppStore', () => {
       expect(state.stats).toBe(null);
       expect(state.sessions).toEqual([]);
       expect(state.tabSessions).toEqual([]);
+      expect(state.blockCategories).toEqual([]);
+      expect(state.categoryUsage).toEqual([]);
       expect(state.isExpanded).toBe(true);
       expect(state.lastError).toBe(null);
     });
@@ -187,6 +191,103 @@ describe('useAppStore', () => {
       await useAppStore.getState().refreshTabSessions();
 
       expect(useAppStore.getState().tabSessions).toEqual(mockTabSessions);
+    });
+
+    test('refreshTabSessions leaves tabSessions unchanged on error', async () => {
+      useAppStore.setState({ tabSessions: [] });
+      const consoleSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
+
+      const { invoke } = await import('@tauri-apps/api/core');
+      (invoke as ReturnType<typeof vi.fn>).mockRejectedValueOnce(new Error('backend error'));
+
+      await expect(useAppStore.getState().refreshTabSessions()).resolves.toBeUndefined();
+
+      expect(useAppStore.getState().tabSessions).toEqual([]);
+      consoleSpy.mockRestore();
+    });
+  });
+
+  describe('block categories', () => {
+    test('refreshBlockCategories updates blockCategories from API', async () => {
+      const categories = [
+        {
+          id: 1,
+          name: 'Social Media',
+          daily_limit_minutes: 60,
+          enabled: true,
+          manual_block_paused: false,
+          domain_keywords: ['instagram.com'],
+          app_keywords: ['discord'],
+          display_order: 0,
+        },
+      ];
+
+      const { invoke } = await import('@tauri-apps/api/core');
+      (invoke as ReturnType<typeof vi.fn>).mockResolvedValueOnce(categories);
+
+      await useAppStore.getState().refreshBlockCategories();
+
+      expect(useAppStore.getState().blockCategories).toEqual(categories);
+    });
+
+    test('refreshCategoryUsage updates categoryUsage from API', async () => {
+      const usage = [
+        {
+          category_id: 1,
+          category_name: 'Social Media',
+          used_seconds: 3600,
+          limit_seconds: 3600,
+          limit_exceeded: true,
+          enabled: true,
+          manual_block_paused: false,
+        },
+      ];
+
+      const { invoke } = await import('@tauri-apps/api/core');
+      (invoke as ReturnType<typeof vi.fn>).mockResolvedValueOnce(usage);
+
+      await useAppStore.getState().refreshCategoryUsage();
+
+      expect(useAppStore.getState().categoryUsage).toEqual(usage);
+    });
+
+    test('saveBlockCategory calls upsert and refreshes category state', async () => {
+      const category = {
+        id: 1,
+        name: 'Games',
+        daily_limit_minutes: 90,
+        enabled: true,
+        manual_block_paused: false,
+        domain_keywords: ['steampowered.com'],
+        app_keywords: ['steam'],
+        display_order: 1,
+      };
+
+      const { invoke } = await import('@tauri-apps/api/core');
+      (invoke as ReturnType<typeof vi.fn>)
+        .mockResolvedValueOnce(1)
+        .mockResolvedValueOnce([category])
+        .mockResolvedValueOnce([]);
+
+      await useAppStore.getState().saveBlockCategory(category);
+
+      expect(invoke).toHaveBeenCalledWith('upsert_block_category', { category });
+      expect(useAppStore.getState().blockCategories).toEqual([category]);
+    });
+
+    test('setBlockCategoryPaused calls backend with categoryId', async () => {
+      const { invoke } = await import('@tauri-apps/api/core');
+      (invoke as ReturnType<typeof vi.fn>)
+        .mockResolvedValueOnce(undefined)
+        .mockResolvedValueOnce([])
+        .mockResolvedValueOnce([]);
+
+      await useAppStore.getState().setBlockCategoryPaused(2, true);
+
+      expect(invoke).toHaveBeenCalledWith('set_block_category_paused', {
+        categoryId: 2,
+        paused: true,
+      });
     });
   });
 });
