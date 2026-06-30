@@ -1,20 +1,29 @@
 let ws = null;
 let backoffMs = 1000;
+let heartbeatTimer = null;
 let eventCounter = 0;
 const popupTimers = new Map();
 const popupWindows = new Map();
 const blockedTabs = new Map();
+const deterrentWindowIds = new Set();
 
 export function connect() {
   ws = new WebSocket('ws://127.0.0.1:7734');
   ws.onopen = () => {
     backoffMs = 1000;
     sendCurrentActiveTab();
+    heartbeatTimer = setInterval(() => {
+      if (ws && ws.readyState === WebSocket.OPEN) {
+        sendCurrentActiveTab();
+      }
+    }, 15000);
   };
   ws.onmessage = (event) => {
     handleMessage(event.data);
   };
   ws.onclose = () => {
+    clearInterval(heartbeatTimer);
+    heartbeatTimer = null;
     setTimeout(connect, backoffMs);
     backoffMs = Math.min(backoffMs * 2, 30000);
   };
@@ -107,6 +116,7 @@ function openDeterrents(tabId, decision) {
         top: 80 + ids.size * 36,
       }).then((created) => {
         if (created?.id && blockedTabs.has(tabId)) {
+          deterrentWindowIds.add(created.id);
           const latest = popupWindows.get(tabId) || new Set();
           latest.add(created.id);
           popupWindows.set(tabId, latest);
@@ -124,10 +134,13 @@ function sendCurrentActiveTab() {
 }
 
 function handleActivated({ tabId }) {
-  Array.from(blockedTabs.keys())
-    .filter((blockedTabId) => blockedTabId !== tabId)
-    .forEach(stopBlocking);
-  chrome.tabs.get(tabId).then(sendTabEvent).catch(() => {});
+  chrome.tabs.get(tabId).then((tab) => {
+    if (deterrentWindowIds.has(tab.windowId)) return;
+    Array.from(blockedTabs.keys())
+      .filter((blockedTabId) => blockedTabId !== tabId)
+      .forEach(stopBlocking);
+    sendTabEvent(tab);
+  }).catch(() => {});
 }
 
 function handleUpdated(_tabId, changeInfo, tab) {
@@ -141,6 +154,7 @@ function handleRemoved(tabId) {
 }
 
 function handleWindowRemoved(windowId) {
+  deterrentWindowIds.delete(windowId);
   popupWindows.forEach((ids, tabId) => {
     ids.delete(windowId);
     if (ids.size === 0) {
