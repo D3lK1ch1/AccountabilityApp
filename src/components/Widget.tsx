@@ -43,6 +43,7 @@ export function Widget() {
   } = useAppStore();
 
   const [show, setShow] = useState(false);
+  const [keywordDraft, setKeywordDraft] = useState<Record<string, { domain: string; app: string }>>({});
 
   useEffect(() => {
     invoke('set_widget_expanded', { expanded: isExpanded }).catch((e) => {
@@ -109,18 +110,38 @@ export function Widget() {
     saveBlockCategory({ ...category, daily_limit_minutes });
   };
 
-  const handleKeywordsChange = (
-    categoryId: number | null,
-    field: 'domain_keywords' | 'app_keywords',
-    value: string,
-  ) => {
-    const category = blockCategories.find((item) => item.id === categoryId);
-    if (!category) return;
-    const keywords = value
-      .split(',')
-      .map((keyword) => keyword.trim())
-      .filter(Boolean);
+  type BlockCategory = (typeof blockCategories)[number];
+
+  const draftKey = (category: BlockCategory) => String(category.id ?? category.name);
+
+  const getDraftValue = (category: BlockCategory, field: 'domain' | 'app') => {
+    const key = draftKey(category);
+    if (keywordDraft[key]) return keywordDraft[key][field];
+    return field === 'domain'
+      ? category.domain_keywords.join(', ')
+      : category.app_keywords.join(', ');
+  };
+
+  const handleKeywordChange = (category: BlockCategory, field: 'domain' | 'app', value: string) => {
+    const key = draftKey(category);
+    setKeywordDraft((prev) => ({
+      ...prev,
+      [key]: {
+        domain: field === 'domain' ? value : (prev[key]?.domain ?? category.domain_keywords.join(', ')),
+        app: field === 'app' ? value : (prev[key]?.app ?? category.app_keywords.join(', ')),
+      },
+    }));
+  };
+
+  const handleKeywordBlur = (category: BlockCategory, field: 'domain_keywords' | 'app_keywords', value: string) => {
+    const keywords = value.split(',').map((k) => k.trim()).filter(Boolean);
     saveBlockCategory({ ...category, [field]: keywords });
+    const key = draftKey(category);
+    setKeywordDraft((prev) => {
+      const next = { ...prev };
+      delete next[key];
+      return next;
+    });
   };
 
   return (
@@ -282,14 +303,16 @@ export function Widget() {
                     </div>
                     <input
                       className="keyword-input"
-                      value={category.domain_keywords.join(', ')}
-                      onChange={(e) => handleKeywordsChange(category.id, 'domain_keywords', e.target.value)}
+                      value={getDraftValue(category, 'domain')}
+                      onChange={(e) => handleKeywordChange(category, 'domain', e.target.value)}
+                      onBlur={(e) => handleKeywordBlur(category, 'domain_keywords', e.target.value)}
                       aria-label={`${category.name} domains`}
                     />
                     <input
                       className="keyword-input"
-                      value={category.app_keywords.join(', ')}
-                      onChange={(e) => handleKeywordsChange(category.id, 'app_keywords', e.target.value)}
+                      value={getDraftValue(category, 'app')}
+                      onChange={(e) => handleKeywordChange(category, 'app', e.target.value)}
+                      onBlur={(e) => handleKeywordBlur(category, 'app_keywords', e.target.value)}
                       aria-label={`${category.name} apps`}
                     />
                   </div>
