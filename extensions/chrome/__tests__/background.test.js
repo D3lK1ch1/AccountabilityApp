@@ -172,6 +172,71 @@ describe('chrome background', () => {
     });
   });
 
+  test('does not stop blocking when activating a tab inside a deterrent popup window', async () => {
+    const mod = await loadModule();
+    wsInstances.at(-1).onopen();
+    await Promise.resolve();
+
+    mod.startBlocking(5, {
+      category_name: 'Social Media',
+      used_seconds: 3600,
+      limit_seconds: 3600,
+      popup_interval_ms: 5000,
+    });
+    // let openDeterrents resolve: tabs.get → windows.create × 3 → .then callbacks
+    await Promise.resolve();
+    await Promise.resolve();
+    await Promise.resolve();
+
+    // deterrent windows are now 100, 101, 102 — simulate activating a tab inside window 100
+    chrome.tabs.get.mockResolvedValueOnce({
+      id: 99, windowId: 100, active: true,
+      url: 'chrome-extension://id/deterrents/fake-ad.html', title: 'Ad',
+    });
+
+    listeners.activated({ tabId: 99 });
+    await Promise.resolve();
+
+    // stopBlocking(5) must NOT have fired — overlay unblock message should not have been sent
+    expect(chrome.tabs.sendMessage).not.toHaveBeenCalledWith(5, { type: 'accountability_unblock' });
+  });
+
+  test('sends a heartbeat tab event every 15 seconds while connected', async () => {
+    const mod = await loadModule();
+    mod.connect();
+    const socket = wsInstances.at(-1);
+    socket.onopen();
+    await Promise.resolve();
+
+    const sentAfterOpen = socket.sent.length; // 1 event from sendCurrentActiveTab on open
+
+    await vi.advanceTimersByTimeAsync(15000);
+    await Promise.resolve();
+
+    expect(socket.sent.length).toBeGreaterThan(sentAfterOpen);
+    const heartbeatPayload = JSON.parse(socket.sent.at(-1));
+    expect(heartbeatPayload.source).toBe('chrome');
+    expect(heartbeatPayload.type).toBe('tab_event');
+  });
+
+  test('clears heartbeat timer when websocket closes', async () => {
+    const mod = await loadModule();
+    mod.connect();
+    const socket = wsInstances.at(-1);
+    socket.onopen();
+    await Promise.resolve();
+
+    const sentAfterOpen = socket.sent.length;
+
+    socket.onclose();
+
+    // advance past one full heartbeat interval — should not fire
+    await vi.advanceTimersByTimeAsync(15000);
+    await Promise.resolve();
+
+    expect(socket.sent.length).toBe(sentAfterOpen);
+  });
+
   test('opens a replacement popup after one is closed externally', async () => {
     const mod = await loadModule();
     mod.startBlocking(6, {
