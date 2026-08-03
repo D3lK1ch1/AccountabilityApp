@@ -13,6 +13,7 @@ use tokio::sync::Mutex;
 
 mod database;
 mod models;
+mod report;
 mod tracking;
 mod websocket;
 
@@ -20,6 +21,7 @@ struct AppState {
     db: Arc<Database>,
     tracker: Arc<Mutex<Option<ActivityTracker>>>,
     stop_tracker_tx: Arc<Mutex<Option<tokio::sync::mpsc::Sender<()>>>>,
+    tab_tracking_enabled: Arc<std::sync::atomic::AtomicBool>,
 }
 
 fn db_err(e: database::DatabaseError) -> String {
@@ -39,7 +41,7 @@ async fn start_tracking(state: State<'_, AppState>) -> Result<(), String> {
     }
     let tracker = ActivityTracker::new(state.db.clone(), 3);
     let (tx, _rx) = tokio::sync::mpsc::channel::<()>(1);
-    
+
     {
         let mut stop_tx = state.stop_tracker_tx.lock().await;
         *stop_tx = Some(tx.clone());
@@ -51,6 +53,10 @@ async fn start_tracking(state: State<'_, AppState>) -> Result<(), String> {
     let mut tracker_lock = state.tracker.lock().await;
     *tracker_lock = Some(tracker);
 
+    state
+        .tab_tracking_enabled
+        .store(true, std::sync::atomic::Ordering::SeqCst);
+
     log::info!("Tracking started");
     Ok(())
 }
@@ -61,10 +67,15 @@ async fn stop_tracking(state: State<'_, AppState>) -> Result<(), String> {
     if let Some(tracker) = tracker_lock.take() {
         tracker.stop();
     }
-    
+
     let mut stop_tx = state.stop_tracker_tx.lock().await;
     *stop_tx = None;
-    
+
+    state
+        .tab_tracking_enabled
+        .store(false, std::sync::atomic::Ordering::SeqCst);
+    state.db.end_crash_tab_sessions().map_err(db_err)?;
+
     log::info!("Tracking stopped");
     Ok(())
 }
@@ -150,6 +161,33 @@ async fn clear_all_sessions(state: State<'_, AppState>) -> Result<(), String> {
         tracker.reset_sessions();
     }
     Ok(())
+}
+
+#[tauri::command]
+async fn save_text_file(path: String, contents: String) -> Result<(), String> {
+    std::fs::write(&path, contents).map_err(|e| e.to_string())
+}
+
+#[derive(serde::Serialize)]
+struct ReportResult {
+    markdown: String,
+    generated_at: i64,
+}
+
+#[tauri::command]
+async fn generate_session_report(state: State<'_, AppState>) -> Result<ReportResult, String> {
+    let now = chrono::Utc::now().timestamp();
+    let since = match state.db.get_setting("last_report_generated_at").map_err(db_err)? {
+        Some(v) => v.parse::<i64>().unwrap_or_else(|_| database::today_start_timestamp()),
+        None => database::today_start_timestamp(),
+    };
+
+    let app_sessions = state.db.get_sessions_since(since).map_err(db_err)?;
+    let tab_sessions = state.db.get_tab_sessions_since(since).map_err(db_err)?;
+
+    let markdown = report::format_report(since, now, &app_sessions, &tab_sessions);
+
+    Ok(ReportResult { markdown, generated_at: now })
 }
 
 #[tauri::command]
@@ -398,21 +436,24 @@ pub fn run() {
     tauri::Builder::default()
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_global_shortcut::Builder::new().build())
+        .plugin(tauri_plugin_dialog::init())
         .setup(|app| {
             let app_data_dir = app.path().app_data_dir().expect("Failed to get app data dir");
             log::info!("App data directory: {:?}", app_data_dir);
 
             let db = Arc::new(Database::new(app_data_dir).expect("Failed to initialize database"));
-            
+            let tab_tracking_enabled = Arc::new(std::sync::atomic::AtomicBool::new(false));
+
             app.manage(AppState {
                 db: db.clone(),
                 tracker: Arc::new(Mutex::new(None)),
                 stop_tracker_tx: Arc::new(Mutex::new(None)),
+                tab_tracking_enabled: tab_tracking_enabled.clone(),
             });
 
             let db_ws = db.clone();
             tauri::async_runtime::spawn(async move {
-                websocket::run_ws_server(db_ws).await;
+                websocket::run_ws_server(db_ws, tab_tracking_enabled).await;
             });
             db.end_crash_tab_sessions().expect("crash tab recovery failed");
 
@@ -445,6 +486,8 @@ pub fn run() {
             get_tab_sessions_today,
             get_tracked_time_per_app,
             clear_all_sessions,
+            save_text_file,
+            generate_session_report,
             quit_app,
             add_blocked_app,
             get_blocked_apps,

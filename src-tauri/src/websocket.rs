@@ -1,6 +1,7 @@
 use crate::database::{Database, TabSession};
 use futures_util::{SinkExt, StreamExt};
 use serde::{Deserialize, Serialize};
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
 use tokio::net::TcpListener;
 use tokio_tungstenite::accept_async;
@@ -34,7 +35,7 @@ struct BlockDecisionResponse {
     popup_interval_ms: i32,
 }
 
-pub async fn run_ws_server(db: Arc<Database>) {
+pub async fn run_ws_server(db: Arc<Database>, tracking_enabled: Arc<AtomicBool>) {
     let listener = match TcpListener::bind("127.0.0.1:7734").await {
         Ok(l) => {
             log::info!("WebSocket server listening on 127.0.0.1:7734");
@@ -45,16 +46,17 @@ pub async fn run_ws_server(db: Arc<Database>) {
             return;
         }
     };
-    accept_loop(db, listener).await;
+    accept_loop(db, tracking_enabled, listener).await;
 }
 
-pub(crate) async fn accept_loop(db: Arc<Database>, listener: TcpListener) {
+pub(crate) async fn accept_loop(db: Arc<Database>, tracking_enabled: Arc<AtomicBool>, listener: TcpListener) {
     loop {
         match listener.accept().await {
             Ok((stream, _)) => {
                 log::info!("WebSocket client connected");
                 let db = db.clone();
-                tokio::spawn(handle_connection(db, stream));
+                let tracking_enabled = tracking_enabled.clone();
+                tokio::spawn(handle_connection(db, tracking_enabled, stream));
             }
             Err(e) => {
                 log::error!("WebSocket accept error: {}", e);
@@ -63,7 +65,7 @@ pub(crate) async fn accept_loop(db: Arc<Database>, listener: TcpListener) {
     }
 }
 
-async fn handle_connection(db: Arc<Database>, stream: tokio::net::TcpStream) {
+async fn handle_connection(db: Arc<Database>, tracking_enabled: Arc<AtomicBool>, stream: tokio::net::TcpStream) {
     let ws_stream = match accept_async(stream).await {
         Ok(ws) => ws,
         Err(_) => return,
@@ -77,6 +79,11 @@ async fn handle_connection(db: Arc<Database>, stream: tokio::net::TcpStream) {
             if let Ok(event) = serde_json::from_str::<TabEvent>(&text) {
                 log::debug!("Tab event: source={}, url={}", event.source, event.tab_url);
                 let now = event.timestamp;
+
+                if !tracking_enabled.load(Ordering::SeqCst) {
+                    log::debug!("Tracking disabled — ignoring tab event from {}", event.source);
+                    continue;
+                }
 
                 // Close the previously open session for this source before recording the new one
                 if let Ok(Some((prev_id, prev_start))) =
@@ -156,9 +163,16 @@ mod tests {
     }
 
     async fn start_server(db: Arc<Database>) -> std::net::SocketAddr {
+        start_server_with_tracking(db, Arc::new(AtomicBool::new(true))).await
+    }
+
+    async fn start_server_with_tracking(
+        db: Arc<Database>,
+        tracking_enabled: Arc<AtomicBool>,
+    ) -> std::net::SocketAddr {
         let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
         let addr = listener.local_addr().unwrap();
-        tokio::spawn(accept_loop(db, listener));
+        tokio::spawn(accept_loop(db, tracking_enabled, listener));
         addr
     }
 
@@ -286,6 +300,52 @@ mod tests {
         assert!(
             db.get_open_tab_session_for_source("vscode").unwrap().is_some(),
             "vscode session should be open"
+        );
+    }
+
+    #[tokio::test]
+    async fn test_ignores_event_when_tracking_disabled() {
+        let (db, _dir) = make_test_db();
+        let tracking_enabled = Arc::new(AtomicBool::new(false));
+        let addr = start_server_with_tracking(db.clone(), tracking_enabled).await;
+
+        let (mut ws, _) = connect_async(format!("ws://{}", addr)).await.unwrap();
+        let now = chrono::Utc::now().timestamp();
+        ws.send(Message::Text(tab_event("chrome", "Google", "https://google.com", now).into()))
+            .await
+            .unwrap();
+
+        sleep(Duration::from_millis(50)).await;
+
+        let open = db.get_open_tab_session_for_source("chrome").unwrap();
+        assert!(open.is_none(), "no session should be recorded while tracking is disabled");
+    }
+
+    #[tokio::test]
+    async fn test_resumes_recording_when_tracking_re_enabled() {
+        let (db, _dir) = make_test_db();
+        let tracking_enabled = Arc::new(AtomicBool::new(false));
+        let addr = start_server_with_tracking(db.clone(), tracking_enabled.clone()).await;
+
+        let (mut ws, _) = connect_async(format!("ws://{}", addr)).await.unwrap();
+        let now = chrono::Utc::now().timestamp();
+
+        ws.send(Message::Text(tab_event("chrome", "Google", "https://google.com", now).into()))
+            .await
+            .unwrap();
+        sleep(Duration::from_millis(50)).await;
+        assert!(db.get_open_tab_session_for_source("chrome").unwrap().is_none());
+
+        tracking_enabled.store(true, Ordering::SeqCst);
+
+        ws.send(Message::Text(tab_event("chrome", "Google", "https://google.com", now + 5).into()))
+            .await
+            .unwrap();
+        sleep(Duration::from_millis(50)).await;
+
+        assert!(
+            db.get_open_tab_session_for_source("chrome").unwrap().is_some(),
+            "session should be recorded once tracking is re-enabled"
         );
     }
 }

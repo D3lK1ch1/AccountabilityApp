@@ -1,4 +1,4 @@
-use chrono::Utc;
+use chrono::{Local, TimeZone, Utc};
 use rusqlite::{params, Connection, OptionalExtension};
 use serde::{Deserialize, Serialize};
 use std::path::PathBuf;
@@ -19,6 +19,15 @@ pub enum DatabaseError {
 }
 
 pub type DbResult<T> = Result<T, DatabaseError>;
+
+pub fn today_start_timestamp() -> i64 {
+    let local_midnight = Local::now().date_naive().and_hms_opt(0, 0, 0).unwrap();
+    match Local.from_local_datetime(&local_midnight) {
+        chrono::LocalResult::Single(dt) => dt.timestamp(),
+        chrono::LocalResult::Ambiguous(dt, _) => dt.timestamp(),
+        chrono::LocalResult::None => Utc::now().timestamp(),
+    }
+}
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct AppSession {
@@ -327,14 +336,11 @@ impl Database {
     }
 
     pub fn get_sessions_today(&self) -> DbResult<Vec<AppSession>> {
-        let conn = self.conn.lock().map_err(|_| DatabaseError::Lock)?;
+        self.get_sessions_since(today_start_timestamp())
+    }
 
-        let today_start = Utc::now()
-            .date_naive()
-            .and_hms_opt(0, 0, 0)
-            .unwrap()
-            .and_utc()
-            .timestamp();
+    pub fn get_sessions_since(&self, since: i64) -> DbResult<Vec<AppSession>> {
+        let conn = self.conn.lock().map_err(|_| DatabaseError::Lock)?;
 
         let mut stmt = conn.prepare(
             "SELECT id, app_name, window_title, start_time, end_time, duration_seconds
@@ -344,7 +350,7 @@ impl Database {
         )?;
 
         let sessions = stmt
-            .query_map([today_start], |row| {
+            .query_map([since], |row| {
                 Ok(AppSession {
                     id: Some(row.get(0)?),
                     app_name: row.get(1)?,
@@ -433,14 +439,11 @@ impl Database {
     }
 
     pub fn get_tab_sessions_today(&self) -> DbResult<Vec<TabSession>> {
-        let conn = self.conn.lock().map_err(|_| DatabaseError::Lock)?;
+        self.get_tab_sessions_since(today_start_timestamp())
+    }
 
-        let today_start = Utc::now()
-            .date_naive()
-            .and_hms_opt(0, 0, 0)
-            .unwrap()
-            .and_utc()
-            .timestamp();
+    pub fn get_tab_sessions_since(&self, since: i64) -> DbResult<Vec<TabSession>> {
+        let conn = self.conn.lock().map_err(|_| DatabaseError::Lock)?;
 
         let mut stmt = conn.prepare(
             "SELECT id, source, tab_url, tab_title, start_time, end_time, duration_seconds
@@ -450,7 +453,7 @@ impl Database {
         )?;
 
         let sessions = stmt
-            .query_map([today_start], |row| {
+            .query_map([since], |row| {
                 Ok(TabSession {
                     id: Some(row.get(0)?),
                     source: row.get(1)?,

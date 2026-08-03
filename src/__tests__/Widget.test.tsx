@@ -67,7 +67,7 @@ describe('Widget', () => {
 
     const trackingBtn = screen.getByTitle('Start tracking');
     expect(trackingBtn).toBeInTheDocument();
-    expect(trackingBtn).toHaveTextContent('Start');
+    expect(trackingBtn).toHaveTextContent('▶');
   });
 
   test('renders tracking button with stop label when tracking', () => {
@@ -79,7 +79,7 @@ describe('Widget', () => {
     render(<Widget />);
 
     const trackingBtn = screen.getByTitle('Stop tracking');
-    expect(trackingBtn).toHaveTextContent('Stop');
+    expect(trackingBtn).toHaveTextContent('⏹');
   });
 
   test('shows idle state when no app is tracked', () => {

@@ -96,6 +96,15 @@ body {
   padding: 10px 12px;
 }
 
+.save-banner {
+  background: rgba(74, 222, 128, 0.16);
+  border: 1px solid rgba(74, 222, 128, 0.4);
+  border-radius: 8px;
+  color: #bbf7d0;
+  font-size: 12px;
+  padding: 10px 12px;
+}
+
 .widget-compact {
   padding: 12px 16px;
 }

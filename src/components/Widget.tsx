@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
 import { invoke } from '@tauri-apps/api/core';
+import { save } from '@tauri-apps/plugin-dialog';
 import { getCurrentWindow } from '@tauri-apps/api/window';
 import { useAppStore } from '../store/useAppStore';
 import './Widget.css';
@@ -44,6 +45,7 @@ export function Widget() {
 
   const [show, setShow] = useState(false);
   const [keywordDraft, setKeywordDraft] = useState<Record<string, { domain: string; app: string }>>({});
+  const [saveNotice, setSaveNotice] = useState<string | null>(null);
 
   useEffect(() => {
     invoke('set_widget_expanded', { expanded: isExpanded }).catch((e) => {
@@ -83,6 +85,43 @@ export function Widget() {
 
     return () => clearInterval(interval);
   }, [isTracking, refreshSessions]);
+
+  const downloadSessionReport = async () => {
+    try {
+      const [rawNumber, { markdown, generated_at }] = await Promise.all([
+        invoke<string | null>('get_setting', { key: 'next_session_report_number' }),
+        invoke<{ markdown: string; generated_at: number }>('generate_session_report'),
+      ]);
+      const n = rawNumber ? parseInt(rawNumber, 10) : 1;
+
+      const generatedDate = new Date(generated_at * 1000);
+      const pad = (v: number) => String(v).padStart(2, '0');
+      const dateStr = `${generatedDate.getFullYear()}-${pad(generatedDate.getMonth() + 1)}-${pad(generatedDate.getDate())}`;
+      const timeStr = `${pad(generatedDate.getHours())}${pad(generatedDate.getMinutes())}`;
+      const filename = `session_${String(n).padStart(2, '0')}_${dateStr}_${timeStr}.md`;
+
+      const path = await save({
+        defaultPath: filename,
+        filters: [{ name: 'Markdown', extensions: ['md'] }],
+      });
+      if (!path) {
+        console.log('downloadSessionReport: save dialog was cancelled');
+        return;
+      }
+
+      await invoke('save_text_file', { path, contents: markdown });
+
+      // Only advance the checkpoint and counter after a confirmed save —
+      // cancelling must not skip data out of the next report.
+      await invoke('set_setting', { key: 'last_report_generated_at', value: String(generated_at) });
+      await invoke('set_setting', { key: 'next_session_report_number', value: String(n + 1) });
+
+      setSaveNotice(`Saved ${filename}`);
+      setTimeout(() => setSaveNotice(null), 4000);
+    } catch (err) {
+      console.error('downloadSessionReport failed:', err);
+    }
+  };
 
   const handleDragStart = (e: React.MouseEvent) => {
     if ((e.target as HTMLElement).closest('button')) return;
@@ -156,7 +195,7 @@ export function Widget() {
             onClick={(e) => { e.stopPropagation(); toggleTracking(); }}
             title={isTracking ? 'Stop tracking' : 'Start tracking'}
           >
-            {isTracking ? 'Stop' : 'Start'}
+            {isTracking ? '⏹' : '▶'}
           </button>
           <button
             className="expand-btn"
@@ -185,6 +224,15 @@ export function Widget() {
             title="Clear all data"
           >
             🗑
+          </button>
+          <button
+            className="clear-btn"
+            onClick={(e) => { e.stopPropagation(); downloadSessionReport(); }}
+            title="Download session report"
+          >
+            <svg viewBox="0 0 512 512" width="1em" height="1em" fill="currentColor" aria-hidden="true">
+              <path d="M256 0c-26.5 0-48 21.5-48 48v214.1l-73.4-73.4c-18.7-18.7-49.1-18.7-67.9 0s-18.7 49.1 0 67.9L222.1 412c18.7 18.7 49.1 18.7 67.9 0L446.4 256.6c18.7-18.7 18.7-49.1 0-67.9s-49.1-18.7-67.9 0L304 262.1V48c0-26.5-21.5-48-48-48zM64 352c-35.3 0-64 28.7-64 64v32c0 35.3 28.7 64 64 64h384c35.3 0 64-28.7 64-64v-32c0-35.3-28.7-64-64-64H346.5l-45.3 45.3c-25 25-65.5 25-90.5 0L165.5 352H64z" />
+            </svg>
           </button>
         </div>
       </div>
@@ -216,6 +264,11 @@ export function Widget() {
           {lastError && (
             <div className="error-banner" role="alert">
               {lastError}
+            </div>
+          )}
+          {saveNotice && (
+            <div className="save-banner" role="status">
+              {saveNotice}
             </div>
           )}
           <div className="stats-grid">
