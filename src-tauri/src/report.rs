@@ -1,4 +1,4 @@
-use crate::database::{AppSession, TabSession};
+use crate::database::AppSession;
 use chrono::{Local, TimeZone};
 
 struct ReportEntry {
@@ -43,7 +43,6 @@ pub fn format_report(
     window_start: i64,
     window_end: i64,
     app_sessions: &[AppSession],
-    tab_sessions: &[TabSession],
 ) -> String {
     let mut entries: Vec<ReportEntry> = Vec::new();
 
@@ -57,26 +56,20 @@ pub fn format_report(
         });
     }
 
-    for s in tab_sessions {
-        entries.push(ReportEntry {
-            start_time: s.start_time,
-            end_time: s.end_time,
-            duration_seconds: s.duration_seconds,
-            source: s.source.clone(),
-            detail: format!("{} — {}", s.tab_title, s.tab_url),
-        });
-    }
-
     entries.sort_by_key(|e| e.start_time);
 
-    let elapsed = (window_end - window_start).max(0);
+    // Display the window as it actually happened, not the (possibly much earlier)
+    // query boundary — e.g. a checkpoint fallback to start-of-today shouldn't make
+    // a report claim "17h elapsed" when tracked activity only spans the last 20 minutes.
+    let display_start = entries.first().map(|e| e.start_time).unwrap_or(window_start);
+    let elapsed = (window_end - display_start).max(0);
     let tracked_total: i64 = entries.iter().map(|e| e.duration_seconds.max(0)).sum();
 
     let mut out = String::new();
-    out.push_str(&format!("# Session Report — {}\n\n", fmt_date(window_start)));
+    out.push_str(&format!("# Session Report — {}\n\n", fmt_date(display_start)));
     out.push_str(&format!(
         "**Window:** {} – {} ({} elapsed)\n\n",
-        fmt_time(window_start),
+        fmt_time(display_start),
         fmt_time(window_end),
         fmt_duration(elapsed)
     ));
@@ -127,40 +120,51 @@ mod tests {
         }
     }
 
-    fn tab_session(start: i64, end: i64, source: &str) -> TabSession {
-        TabSession {
-            id: Some(1),
-            source: source.to_string(),
-            tab_url: "https://example.com".to_string(),
-            tab_title: "Example".to_string(),
-            start_time: start,
-            end_time: Some(end),
-            duration_seconds: end - start,
-        }
-    }
-
     #[test]
     fn merges_and_sorts_by_start_time() {
-        let apps = vec![app_session(200, 300, "Terminal")];
-        let tabs = vec![tab_session(100, 200, "chrome")];
+        let apps = vec![
+            app_session(100, 200, "Chrome"),
+            app_session(200, 300, "Terminal"),
+        ];
 
-        let report = format_report(100, 300, &apps, &tabs);
+        let report = format_report(100, 300, &apps);
 
-        let chrome_pos = report.find("chrome").unwrap();
+        let chrome_pos = report.find("Chrome").unwrap();
         let terminal_pos = report.find("Terminal").unwrap();
-        assert!(chrome_pos < terminal_pos, "chrome entry should appear before terminal entry");
+        assert!(chrome_pos < terminal_pos, "earlier entry should appear before later entry");
     }
 
     #[test]
     fn empty_window_says_so() {
-        let report = format_report(100, 200, &[], &[]);
+        let report = format_report(100, 200, &[]);
         assert!(report.contains("No tracked activity"));
+    }
+
+    #[test]
+    fn displayed_window_starts_at_first_entry_not_query_boundary() {
+        // Query boundary (e.g. start-of-today fallback) is far earlier than
+        // when activity actually began — the header should reflect the latter.
+        let query_start = 0;
+        let first_activity = 60_000;
+        let now = 60_100;
+
+        let apps = vec![app_session(first_activity, first_activity + 50, "Notepad")];
+        let report = format_report(query_start, now, &apps);
+
+        assert!(
+            report.contains(&fmt_time(first_activity)),
+            "window header should show the first entry's time, not the query boundary"
+        );
+        assert!(
+            !report.contains("16h"),
+            "elapsed should be based on actual activity span, not the full query window"
+        );
     }
 
     #[test]
     fn footer_reports_entry_count() {
         let apps = vec![app_session(100, 150, "A"), app_session(150, 200, "B")];
-        let report = format_report(100, 200, &apps, &[]);
+        let report = format_report(100, 200, &apps);
         assert!(report.contains("2 entries"));
     }
 }
