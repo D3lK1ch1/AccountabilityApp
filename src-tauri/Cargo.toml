@@ -1,6 +1,6 @@
 [package]
 name = "accountabilityapp"
-version = "0.1.0"
+version = "0.2.0"
 description = "Accountability App - Track app/browser usage with blocking features on the works."
 authors = ["Delia Kok"]
 edition = "2021"
@@ -19,7 +19,7 @@ tauri-plugin-global-shortcut = "2"
 tauri-plugin-dialog = "2"
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
-keyring = "3"
+keyring = { version = "3", features = ["windows-native"] }
 rand = "0.8"
 hex = "0.4"
 
@@ -30,9 +30,7 @@ active-win-pos-rs = "0.9"
 rusqlite = { version = "0.31", features = ["bundled-sqlcipher-vendored-openssl"] }
 
 # Async runtime
-tokio = { version = "1", features = ["rt", "sync", "time", "macros", "net"] }
-tokio-tungstenite = { version = "0.24", default-features = false, features = ["connect"] }
-futures-util = { version = "0.3", default-features = false, features = ["sink", "std"] }
+tokio = { version = "1", features = ["rt", "sync", "time", "macros"] }
 
 # Date/time handling
 chrono = { version = "0.4", features = ["serde"] }
