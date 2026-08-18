@@ -2,7 +2,7 @@
 
 A privacy-first Windows desktop widget that tracks your app usage and helps you stay aware of your digital habits. All data is stored locally on your machine — no cloud, no telemetry.
 
-> **Status:** Releasing pre-beta (v0.1.0). Core tracking works; blocking UI and AI chatbot are on the roadmap.
+> **Status:** Pre-beta (v0.2.0). Activity tracking, browser tab tracking, and category-based quota blocking work; per-app blocking UI is on the roadmap (due to determination to annoy people with rickrolling and stock photo adsz).
 
 ---
 
@@ -22,8 +22,10 @@ Built with a Rust backend for system-level activity tracking and a React fronten
 - [x] Global hotkey (`Ctrl+Shift+A`) to show/hide widget
 - [x] First-run consent modal for privacy confirmation
 - [x] Clear all session data at any time
+- [ ] Browser tab tracking via a Chrome extension, bridged over a local WebSocket server (rolled back, needing to understand further with potential alternatives)
+- [x] Category-based quota blocking (Social Media, Games, ...) with daily limits, manual pause, and a block overlay/deterrent popups on the tracked tab
+- [x] Downloadable Markdown session reports, saved via a native Save-As dialog
 - [ ] App blocking UI *(backend commands ready, UI pending)*
-- [ ] AI therapist chatbot *(planned)*
 
 See [CHANGELOG.md](./CHANGELOG.md) for version history and upcoming work.
 
@@ -111,25 +113,18 @@ Click on accountabilityapp.exe for the app itself.
 
 ---
 
-## Usage
-The video bellow shows how the Accountability App works, from general consent to app and tab tracking, clearing data and quitting the app:
-
-  [Watch the demo video](https://github.com/D3lK1ch1/AccountabilityApp/releases/download/v0.1.0/AccountabilityApp.mp4)
-
----
-
 ## Roadmap
 
 High-level direction for the project. See [CHANGELOG.md](./CHANGELOG.md) for version-specific planning.
 
 - [ ] App blocking UI (backend already supports `add_blocked_app` / `remove_blocked_app`)
-- [ ] AI therapist chatbot powered by a local LLM via [Ollama](https://ollama.com/)
 - [x] Encrypted SQLite database with an OS keychain-backed local key
 - [x] Expand backend test coverage (`end_crash_session`, error cases) 
 - [x] Add a CI pipeline
 - [x] macOS support *(active window tracking — merged PR #1)*
-- [ ] iOS support (via the Screen Time API)
-- [ ] Browser/editor extensions for tab-level tracking (database and command bridge started)
+- [x] Category-based quota blocking
+- [ ] Chrome tab tracking and VS Code tab bridge (backend and WebSocket server already support it)
+- [ ] Firefox tab tracking (needs its own signed extension package)
 
 ---
 
