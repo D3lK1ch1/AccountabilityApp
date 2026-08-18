@@ -1,5 +1,5 @@
 use crate::database::{
-    AppSession, BlockCategory, BlockDecision, BlockedApp, CategoryUsage, Database, TabSession,
+    AppSession, BlockCategory, BlockedApp, CategoryUsage, Database,
 };
 use crate::models::{DashboardStats, TrackerStatus, UsageData};
 use crate::tracking::ActivityTracker;
@@ -15,13 +15,11 @@ mod database;
 mod models;
 mod report;
 mod tracking;
-mod websocket;
 
 struct AppState {
     db: Arc<Database>,
     tracker: Arc<Mutex<Option<ActivityTracker>>>,
     stop_tracker_tx: Arc<Mutex<Option<tokio::sync::mpsc::Sender<()>>>>,
-    tab_tracking_enabled: Arc<std::sync::atomic::AtomicBool>,
 }
 
 fn db_err(e: database::DatabaseError) -> String {
@@ -53,10 +51,6 @@ async fn start_tracking(state: State<'_, AppState>) -> Result<(), String> {
     let mut tracker_lock = state.tracker.lock().await;
     *tracker_lock = Some(tracker);
 
-    state
-        .tab_tracking_enabled
-        .store(true, std::sync::atomic::Ordering::SeqCst);
-
     log::info!("Tracking started");
     Ok(())
 }
@@ -70,11 +64,6 @@ async fn stop_tracking(state: State<'_, AppState>) -> Result<(), String> {
 
     let mut stop_tx = state.stop_tracker_tx.lock().await;
     *stop_tx = None;
-
-    state
-        .tab_tracking_enabled
-        .store(false, std::sync::atomic::Ordering::SeqCst);
-    state.db.end_crash_tab_sessions().map_err(db_err)?;
 
     log::info!("Tracking stopped");
     Ok(())
@@ -143,11 +132,6 @@ async fn get_sessions_today(state: State<'_, AppState>) -> Result<Vec<AppSession
 }
 
 #[tauri::command]
-async fn get_tab_sessions_today(state: State<'_, AppState>) -> Result<Vec<TabSession>, String> {
-    state.db.get_tab_sessions_today().map_err(db_err)
-}
-
-#[tauri::command]
 async fn get_tracked_time_per_app(state: State<'_, AppState>, app_name: String) -> Result<i64, String> {
     state.db.get_tracked_time_per_app(&app_name).map_err(db_err)
 }
@@ -155,7 +139,6 @@ async fn get_tracked_time_per_app(state: State<'_, AppState>, app_name: String) 
 #[tauri::command]
 async fn clear_all_sessions(state: State<'_, AppState>) -> Result<(), String> {
     state.db.delete_all_sessions().map_err(db_err)?;
-    state.db.delete_all_tab_sessions().map_err(db_err)?;
     let tracker_lock = state.tracker.lock().await;
     if let Some(tracker) = tracker_lock.as_ref() {
         tracker.reset_sessions();
@@ -183,9 +166,8 @@ async fn generate_session_report(state: State<'_, AppState>) -> Result<ReportRes
     };
 
     let app_sessions = state.db.get_sessions_since(since).map_err(db_err)?;
-    let tab_sessions = state.db.get_tab_sessions_since(since).map_err(db_err)?;
 
-    let markdown = report::format_report(since, now, &app_sessions, &tab_sessions);
+    let markdown = report::format_report(since, now, &app_sessions);
 
     Ok(ReportResult { markdown, generated_at: now })
 }
@@ -264,15 +246,6 @@ async fn get_category_usage_today(state: State<'_, AppState>) -> Result<Vec<Cate
 }
 
 #[tauri::command]
-async fn evaluate_tab_block(
-    state: State<'_, AppState>,
-    tab_url: String,
-    tab_title: String,
-) -> Result<BlockDecision, String> {
-    state.db.evaluate_tab_block(&tab_url, &tab_title).map_err(db_err)
-}
-
-#[tauri::command]
 async fn set_setting(state: State<'_, AppState>, key: String, value: String) -> Result<(), String> {
     state.db.set_setting(&key, &value).map_err(db_err)
 }
@@ -289,7 +262,7 @@ async fn set_widget_expanded(app: AppHandle, expanded: bool) -> Result<(), Strin
         .ok_or_else(|| "main window not found".to_string())?;
 
     let width = 400.0;
-    let height = if expanded { 1000.0 } else { 100.0 };
+    let height = if expanded { 1000.0 } else { 145.0 };
 
     window
         .set_size(Size::Logical(LogicalSize { width, height }))
@@ -442,20 +415,12 @@ pub fn run() {
             log::info!("App data directory: {:?}", app_data_dir);
 
             let db = Arc::new(Database::new(app_data_dir).expect("Failed to initialize database"));
-            let tab_tracking_enabled = Arc::new(std::sync::atomic::AtomicBool::new(false));
 
             app.manage(AppState {
                 db: db.clone(),
                 tracker: Arc::new(Mutex::new(None)),
                 stop_tracker_tx: Arc::new(Mutex::new(None)),
-                tab_tracking_enabled: tab_tracking_enabled.clone(),
             });
-
-            let db_ws = db.clone();
-            tauri::async_runtime::spawn(async move {
-                websocket::run_ws_server(db_ws, tab_tracking_enabled).await;
-            });
-            db.end_crash_tab_sessions().expect("crash tab recovery failed");
 
             setup_tray(app.handle())?;
             setup_global_shortcut(app.handle())?;
@@ -483,7 +448,6 @@ pub fn run() {
             get_tracker_status,
             get_dashboard_stats,
             get_sessions_today,
-            get_tab_sessions_today,
             get_tracked_time_per_app,
             clear_all_sessions,
             save_text_file,
@@ -497,7 +461,6 @@ pub fn run() {
             set_block_category_enabled,
             set_block_category_paused,
             get_category_usage_today,
-            evaluate_tab_block,
             set_setting,
             get_setting,
             set_widget_expanded,
