@@ -138,9 +138,23 @@ export function Widget() {
   const topApp = stats?.most_used_app ?? 'No data yet';
   const recentSessions = sessions.slice(0, 8);
   const appName = (currentApp ?? '').toLowerCase();
-  const showWindowTitle = appName.includes('chrome') || appName.includes('visual studio');
+  const showWindowTitle = appName.includes('chrome') || appName.includes('visual studio') || appName.includes('terminal');
   const detailTitle = showWindowTitle ? currentWindowTitle : null;
   const usageByCategoryId = new Map(categoryUsage.map((usage) => [usage.category_id, usage]));
+
+  const currentCategory = blockCategories.find((category) => {
+    if (!category.enabled || category.manual_block_paused) return false;
+    const haystack = `${currentApp ?? ''} ${currentWindowTitle ?? ''}`.toLowerCase();
+    return category.app_keywords.some((keyword) => {
+      const trimmed = keyword.trim().toLowerCase();
+      return trimmed.length > 0 && haystack.includes(trimmed);
+    });
+  });
+  const currentCategoryUsage = currentCategory?.id != null ? usageByCategoryId.get(currentCategory.id) : undefined;
+  const currentCategoryPercent =
+    currentCategoryUsage && currentCategoryUsage.limit_seconds > 0
+      ? Math.min(100, (currentCategoryUsage.used_seconds / currentCategoryUsage.limit_seconds) * 100)
+      : 0;
 
   const handleLimitChange = (categoryId: number | null, value: string) => {
     const category = blockCategories.find((item) => item.id === categoryId);
@@ -423,6 +437,19 @@ export function Widget() {
               {detailTitle || currentApp || '-'}
             </span>
           </div>
+          {currentCategory && currentCategoryUsage && (
+            <div className="compact-category">
+              <div className="compact-category-top">
+                <span className="compact-category-name">{currentCategory.name}</span>
+                <span className="compact-category-time">
+                  {formatDuration(currentCategoryUsage.used_seconds)} / {formatDuration(currentCategoryUsage.limit_seconds)}
+                </span>
+              </div>
+              <div className="category-bar">
+                <div className="category-fill" style={{ width: `${currentCategoryPercent}%` }} />
+              </div>
+            </div>
+          )}
         </div>
       )}
     </div>
