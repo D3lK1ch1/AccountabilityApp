@@ -1,5 +1,5 @@
 use chrono::{Local, TimeZone, Utc};
-use rusqlite::{params, Connection, OptionalExtension};
+use rusqlite::{params, Connection};
 use serde::{Deserialize, Serialize};
 use std::path::PathBuf;
 use std::sync::Mutex;
@@ -40,17 +40,6 @@ pub struct AppSession {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct TabSession {
-    pub id: Option<i64>,
-    pub source: String,
-    pub tab_url: String,
-    pub tab_title: String,
-    pub start_time: i64,
-    pub end_time: Option<i64>,
-    pub duration_seconds: i64,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct BlockedApp {
     pub id: Option<i64>,
     pub app_name: String,
@@ -81,22 +70,19 @@ pub struct CategoryUsage {
     pub manual_block_paused: bool,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct BlockDecision {
-    pub blocked: bool,
-    pub category_id: Option<i64>,
-    pub category_name: Option<String>,
-    pub used_seconds: i64,
-    pub limit_seconds: i64,
-    pub deterrent_mode: String,
-    pub popup_interval_ms: i32,
-}
 pub struct Database {
     conn: Mutex<Connection>,
 }
 
 fn get_or_create_key(db_path: &std::path::Path) -> Result<String, DatabaseError> {
-    let entry = keyring::Entry::new("accountability_app", "db_key")
+    // Tests must not touch the real app's OS keychain entry - a shared identifier here
+    // means every `cargo test` run would overwrite the production encryption key.
+    #[cfg(test)]
+    let service = "accountability_app_test";
+    #[cfg(not(test))]
+    let service = "accountability_app";
+
+    let entry = keyring::Entry::new(service, "db_key")
     .map_err(|e| DatabaseError::KeyringError(e.to_string()))?;
 
     match entry.get_password() {
@@ -152,19 +138,6 @@ impl Database {
         )?;
 
         conn.execute(
-            "CREATE TABLE IF NOT EXISTS tab_sessions (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                source TEXT NOT NULL,
-                tab_url TEXT NOT NULL,
-                tab_title TEXT NOT NULL,
-                start_time INTEGER NOT NULL,
-                end_time INTEGER,
-                duration_seconds INTEGER DEFAULT 0
-            )",
-            [],
-        )?;
-
-        conn.execute(
             "CREATE TABLE IF NOT EXISTS blocked_apps (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
                 app_name TEXT NOT NULL UNIQUE,
@@ -189,16 +162,6 @@ impl Database {
 
         conn.execute(
             "CREATE INDEX IF NOT EXISTS idx_sessions_app_name ON app_sessions(app_name)",
-            [],
-        )?;
-
-        conn.execute(
-            "CREATE INDEX IF NOT EXISTS idx_tab_sessions_start_time ON tab_sessions(start_time)",
-            [],
-        )?;
-
-        conn.execute(
-            "CREATE INDEX IF NOT EXISTS idx_tab_sessions_source ON tab_sessions(source)",
             [],
         )?;
 
@@ -234,7 +197,6 @@ impl Database {
                 manual_block_paused: false,
                 domain_keywords: vec![
                     "x.com",
-                    "twitter.com",
                     "instagram.com",
                     "facebook.com",
                     "tiktok.com",
@@ -248,11 +210,11 @@ impl Database {
                 .map(str::to_string)
                 .collect(),
                 app_keywords: vec![
+                    "x",
                     "discord",
                     "instagram",
                     "facebook",
                     "tiktok",
-                    "twitter",
                     "reddit",
                 ]
                 .into_iter()
@@ -376,9 +338,9 @@ impl Database {
             .timestamp();
 
         let mut stmt = conn.prepare(
-            "SELECT app_name, SUM(CASE WHEN            
+            "SELECT app_name, SUM(CASE WHEN
             end_time IS NULL THEN (strftime('%s', 'now') - start_time)
-            ELSE duration_seconds END) 
+            ELSE duration_seconds END)
             as total_duration
             FROM app_sessions
             WHERE start_time >= ?1
@@ -403,127 +365,6 @@ impl Database {
         Ok(())
     }
 
-    pub fn insert_tab_session(&self, session: &TabSession) -> DbResult<i64> {
-        let conn = self.conn.lock().map_err(|_| DatabaseError::Lock)?;
-
-        conn.execute(
-            "INSERT INTO tab_sessions (source, tab_url, tab_title, start_time, end_time, duration_seconds)
-             VALUES (?1, ?2, ?3, ?4, ?5, ?6)",
-            params![
-                session.source,
-                session.tab_url,
-                session.tab_title,
-                session.start_time,
-                session.end_time,
-                session.duration_seconds,
-            ],
-        )?;
-
-        Ok(conn.last_insert_rowid())
-    }
-
-    pub fn close_tab_session(
-        &self,
-        session_id: i64,
-        end_time: i64,
-        duration: i64,
-    ) -> DbResult<()> {
-        let conn = self.conn.lock().map_err(|_| DatabaseError::Lock)?;
-
-        conn.execute(
-            "UPDATE tab_sessions SET end_time = ?1, duration_seconds = ?2 WHERE id = ?3",
-            params![end_time, duration, session_id],
-        )?;
-
-        Ok(())
-    }
-
-    pub fn get_tab_sessions_today(&self) -> DbResult<Vec<TabSession>> {
-        self.get_tab_sessions_since(today_start_timestamp())
-    }
-
-    pub fn get_tab_sessions_since(&self, since: i64) -> DbResult<Vec<TabSession>> {
-        let conn = self.conn.lock().map_err(|_| DatabaseError::Lock)?;
-
-        let mut stmt = conn.prepare(
-            "SELECT id, source, tab_url, tab_title, start_time, end_time, duration_seconds
-             FROM tab_sessions
-             WHERE start_time >= ?1
-             ORDER BY start_time DESC",
-        )?;
-
-        let sessions = stmt
-            .query_map([since], |row| {
-                Ok(TabSession {
-                    id: Some(row.get(0)?),
-                    source: row.get(1)?,
-                    tab_url: row.get(2)?,
-                    tab_title: row.get(3)?,
-                    start_time: row.get(4)?,
-                    end_time: row.get(5)?,
-                    duration_seconds: row.get(6)?,
-                })
-            })?
-            .collect::<Result<Vec<_>, _>>()?;
-
-        Ok(sessions)
-    }
-
-    pub fn delete_all_tab_sessions(&self) -> DbResult<()> {
-        let conn = self.conn.lock().map_err(|_| DatabaseError::Lock)?;
-
-        conn.execute("DELETE FROM tab_sessions", [])?;
-
-        Ok(())
-    }
-
-    pub fn get_open_tab_session_for_source(
-        &self,
-        source: &str,
-    ) -> DbResult<Option<(i64, i64)>> {
-        let conn = self.conn.lock().map_err(|_| DatabaseError::Lock)?;
-
-        let result = conn
-            .query_row(
-                "SELECT id, start_time FROM tab_sessions
-                 WHERE source = ?1 AND end_time IS NULL
-                 ORDER BY start_time DESC LIMIT 1",
-                [source],
-                |row| Ok((row.get::<_, i64>(0)?, row.get::<_, i64>(1)?)),
-            )
-            .optional()?;
-
-        Ok(result)
-    }
-
-    pub fn finalize_open_tab_sessions(&self, source: &str, now: i64) -> DbResult<()> {
-        let conn = self.conn.lock().map_err(|_| DatabaseError::Lock)?;
-
-        conn.execute(
-            "UPDATE tab_sessions
-             SET end_time = ?1, duration_seconds = (?1 - start_time)
-             WHERE source = ?2 AND end_time IS NULL",
-            params![now, source],
-        )?;
-
-        Ok(())
-    }
-
-    pub fn end_crash_tab_sessions(&self) -> DbResult<()> {
-        let conn = self.conn.lock().map_err(|_| DatabaseError::Lock)?;
-
-        let now = Utc::now().timestamp();
-
-        conn.execute(
-            "UPDATE tab_sessions
-             SET end_time = ?1, duration_seconds = (?1 - start_time)
-             WHERE end_time IS NULL AND start_time <= ?1",
-            [now],
-        )?;
-
-        Ok(())
-    }
-
     pub fn get_total_tracked_time_today(&self) -> DbResult<i64> {
         let conn = self.conn.lock().map_err(|_| DatabaseError::Lock)?;
 
@@ -535,12 +376,12 @@ impl Database {
             .timestamp();
 
         let total: i64 = conn.query_row(
-            "SELECT COALESCE (SUM (CASE WHEN end_time IS NULL 
+            "SELECT COALESCE (SUM (CASE WHEN end_time IS NULL
             THEN (strftime('%s', 'now') - start_time) ELSE duration_seconds END), 0)
              FROM app_sessions
              WHERE start_time >= ?1",
             [today_start],
-            |row| row.get(0),  
+            |row| row.get(0),
         )?;
 
         Ok(total)
@@ -557,12 +398,12 @@ impl Database {
             .timestamp();
 
         let app: i64 = conn.query_row(
-            "SELECT COALESCE (SUM (CASE WHEN end_time IS NULL 
+            "SELECT COALESCE (SUM (CASE WHEN end_time IS NULL
             THEN (strftime('%s', 'now') - start_time) ELSE duration_seconds END), 0)
              FROM app_sessions
              WHERE start_time >= ?1 AND app_name = ?2",
             params! [today_start, app_name],
-            |row| row.get(0),  
+            |row| row.get(0),
         )?;
 
         Ok(app)
@@ -752,24 +593,17 @@ impl Database {
     pub fn get_category_usage_today(&self) -> DbResult<Vec<CategoryUsage>> {
         let categories = self.get_block_categories()?;
         let app_sessions = self.get_sessions_today()?;
-        let tab_sessions = self.get_tab_sessions_today()?;
         let now = Utc::now().timestamp();
 
         let usages = categories
             .iter()
             .filter_map(|category| {
                 category.id.map(|category_id| {
-                    let app_seconds = app_sessions
+                    let used_seconds = app_sessions
                         .iter()
                         .filter(|session| app_matches_category(session, category))
                         .map(|session| session_seconds(session.start_time, session.end_time, session.duration_seconds, now))
                         .sum::<i64>();
-                    let tab_seconds = tab_sessions
-                        .iter()
-                        .filter(|session| tab_matches_category(session, category))
-                        .map(|session| session_seconds(session.start_time, session.end_time, session.duration_seconds, now))
-                        .sum::<i64>();
-                    let used_seconds = app_seconds + tab_seconds;
                     let limit_seconds = i64::from(category.daily_limit_minutes.max(0)) * 60;
 
                     CategoryUsage {
@@ -786,54 +620,6 @@ impl Database {
             .collect();
 
         Ok(usages)
-    }
-
-    pub fn evaluate_tab_block(&self, tab_url: &str, tab_title: &str) -> DbResult<BlockDecision> {
-        let categories = self.get_block_categories()?;
-        let usages = self.get_category_usage_today()?;
-        let probe = TabSession {
-            id: None,
-            source: "probe".to_string(),
-            tab_url: tab_url.to_string(),
-            tab_title: tab_title.to_string(),
-            start_time: Utc::now().timestamp(),
-            end_time: None,
-            duration_seconds: 0,
-        };
-
-        for category in categories {
-            if !category.enabled || category.manual_block_paused {
-                continue;
-            }
-            if !tab_matches_category(&probe, &category) {
-                continue;
-            }
-            if let Some(category_id) = category.id {
-                if let Some(usage) = usages.iter().find(|u| u.category_id == category_id) {
-                    if usage.limit_exceeded {
-                        return Ok(BlockDecision {
-                            blocked: true,
-                            category_id: Some(category_id),
-                            category_name: Some(category.name),
-                            used_seconds: usage.used_seconds,
-                            limit_seconds: usage.limit_seconds,
-                            deterrent_mode: "rotating_mix".to_string(),
-                            popup_interval_ms: 5000,
-                        });
-                    }
-                }
-            }
-        }
-
-        Ok(BlockDecision {
-            blocked: false,
-            category_id: None,
-            category_name: None,
-            used_seconds: 0,
-            limit_seconds: 0,
-            deterrent_mode: "none".to_string(),
-            popup_interval_ms: 0,
-        })
     }
 }
 
@@ -853,52 +639,36 @@ fn app_matches_category(session: &AppSession, category: &BlockCategory) -> bool 
     contains_keyword(&haystack, &category.app_keywords)
 }
 
-fn tab_matches_category(session: &TabSession, category: &BlockCategory) -> bool {
-    let title = session.tab_title.to_lowercase();
-    let url = session.tab_url.to_lowercase();
-    let host = host_from_url(&url);
-    contains_domain_keyword(host.as_deref(), &category.domain_keywords)
-        || contains_keyword(&title, &category.domain_keywords)
-        || contains_keyword(&url, &category.domain_keywords)
-}
-
 fn contains_keyword(haystack: &str, keywords: &[String]) -> bool {
     keywords
         .iter()
         .map(|keyword| keyword.trim().to_lowercase())
         .filter(|keyword| !keyword.is_empty())
-        .any(|keyword| haystack.contains(&keyword))
+        .any(|keyword| contains_word_boundary(haystack, &keyword))
 }
 
-fn contains_domain_keyword(host: Option<&str>, keywords: &[String]) -> bool {
-    let Some(host) = host else {
+// Plain substring matching lets short keywords (e.g. "x" for the X/Twitter taskbar
+// app) match inside unrelated words — "x" inside "Windows Explorer" would silently
+// count Explorer time toward the Social Media quota. Requiring the match not be
+// flanked by another alphanumeric character keeps "x" matching "X - Google Chrome"
+// while rejecting "explorer", without needing per-keyword exceptions.
+fn contains_word_boundary(haystack: &str, needle: &str) -> bool {
+    if needle.is_empty() {
         return false;
-    };
-    keywords
-        .iter()
-        .map(|keyword| keyword.trim().trim_start_matches("*.").to_lowercase())
-        .filter(|keyword| !keyword.is_empty())
-        .any(|keyword| host == keyword || host.ends_with(&format!(".{}", keyword)))
-}
-
-fn host_from_url(url: &str) -> Option<String> {
-    let after_scheme = url.split_once("://").map(|(_, rest)| rest).unwrap_or(url);
-    let authority = after_scheme.split(['/', '?', '#']).next().unwrap_or("");
-    let host = authority
-        .split('@')
-        .next_back()
-        .unwrap_or("")
-        .split(':')
-        .next()
-        .unwrap_or("")
-        .trim()
-        .trim_start_matches("www.");
-
-    if host.is_empty() {
-        None
-    } else {
-        Some(host.to_string())
     }
+    let bytes = haystack.as_bytes();
+    let mut search_from = 0;
+    while let Some(offset) = haystack[search_from..].find(needle) {
+        let start = search_from + offset;
+        let end = start + needle.len();
+        let before_ok = start == 0 || !bytes[start - 1].is_ascii_alphanumeric();
+        let after_ok = end >= bytes.len() || !bytes[end].is_ascii_alphanumeric();
+        if before_ok && after_ok {
+            return true;
+        }
+        search_from = start + 1;
+    }
+    false
 }
 
 #[cfg(test)]
@@ -1083,160 +853,6 @@ mod tests {
     }
 
     #[test]
-    fn test_insert_close_and_get_tab_session() {
-        let (db, _dir) = create_test_db();
-        let now = chrono::Utc::now().timestamp();
-
-        let session = TabSession {
-            id: None,
-            source: "chrome".to_string(),
-            tab_url: "https://example.com".to_string(),
-            tab_title: "Example".to_string(),
-            start_time: now,
-            end_time: None,
-            duration_seconds: 0,
-        };
-
-        let id = db.insert_tab_session(&session).unwrap();
-        let sessions = db.get_tab_sessions_today().unwrap();
-
-        assert_eq!(sessions.len(), 1);
-        assert_eq!(sessions[0].source, "chrome");
-        assert_eq!(sessions[0].tab_title, "Example");
-
-        db.close_tab_session(id, now + 30, 30).unwrap();
-        let sessions = db.get_tab_sessions_today().unwrap();
-
-        assert_eq!(sessions[0].end_time, Some(now + 30));
-        assert_eq!(sessions[0].duration_seconds, 30);
-    }
-
-    #[test]
-    fn test_delete_all_tab_sessions() {
-        let (db, _dir) = create_test_db();
-        let now = chrono::Utc::now().timestamp();
-
-        let session = TabSession {
-            id: None,
-            source: "vscode".to_string(),
-            tab_url: "file:///workspace/main.rs".to_string(),
-            tab_title: "main.rs".to_string(),
-            start_time: now,
-            end_time: None,
-            duration_seconds: 0,
-        };
-
-        db.insert_tab_session(&session).unwrap();
-        db.delete_all_tab_sessions().unwrap();
-
-        assert!(db.get_tab_sessions_today().unwrap().is_empty());
-    }
-
-    #[test]
-    fn test_finalize_open_tab_sessions_by_source() {
-        let (db, _dir) = create_test_db();
-        let now = chrono::Utc::now().timestamp();
-
-        let chrome_session = TabSession {
-            id: None,
-            source: "chrome".to_string(),
-            tab_url: "https://example.com".to_string(),
-            tab_title: "Example".to_string(),
-            start_time: now,
-            end_time: None,
-            duration_seconds: 0,
-        };
-        let vscode_session = TabSession {
-            id: None,
-            source: "vscode".to_string(),
-            tab_url: "file:///main.rs".to_string(),
-            tab_title: "main.rs".to_string(),
-            start_time: now,
-            end_time: None,
-            duration_seconds: 0,
-        };
-
-        db.insert_tab_session(&chrome_session).unwrap();
-        db.insert_tab_session(&chrome_session).unwrap();
-        db.insert_tab_session(&vscode_session).unwrap();
-
-        db.finalize_open_tab_sessions("chrome", now + 60).unwrap();
-
-        let sessions = db.get_tab_sessions_today().unwrap();
-        let chrome_sessions: Vec<_> = sessions.iter().filter(|s| s.source == "chrome").collect();
-        let vscode_sessions: Vec<_> = sessions.iter().filter(|s| s.source == "vscode").collect();
-
-        assert!(chrome_sessions.iter().all(|s| s.end_time.is_some()));
-        assert!(vscode_sessions.iter().all(|s| s.end_time.is_none()));
-    }
-
-    #[test]
-    fn test_end_crash_tab_sessions() {
-        let (db, _dir) = create_test_db();
-        let now = chrono::Utc::now().timestamp();
-
-        for source in &["chrome", "vscode"] {
-            db.insert_tab_session(&TabSession {
-                id: None,
-                source: source.to_string(),
-                tab_url: "https://example.com".to_string(),
-                tab_title: "Example".to_string(),
-                start_time: now,
-                end_time: None,
-                duration_seconds: 0,
-            })
-            .unwrap();
-        }
-
-        db.end_crash_tab_sessions().unwrap();
-
-        let sessions = db.get_tab_sessions_today().unwrap();
-        assert!(sessions.iter().all(|s| s.end_time.is_some()));
-        assert!(sessions.iter().all(|s| s.duration_seconds >= 0));
-    }
-
-    #[test]
-    fn test_source_isolation() {
-        let (db, _dir) = create_test_db();
-        let now = chrono::Utc::now().timestamp();
-
-        db.insert_tab_session(&TabSession {
-            id: None,
-            source: "chrome".to_string(),
-            tab_url: "https://example.com".to_string(),
-            tab_title: "Chrome Tab".to_string(),
-            start_time: now,
-            end_time: None,
-            duration_seconds: 0,
-        })
-        .unwrap();
-
-        db.insert_tab_session(&TabSession {
-            id: None,
-            source: "vscode".to_string(),
-            tab_url: "file:///main.rs".to_string(),
-            tab_title: "main.rs".to_string(),
-            start_time: now,
-            end_time: None,
-            duration_seconds: 0,
-        })
-        .unwrap();
-
-        let chrome_open = db.get_open_tab_session_for_source("chrome").unwrap();
-        let vscode_open = db.get_open_tab_session_for_source("vscode").unwrap();
-
-        assert!(chrome_open.is_some());
-        assert!(vscode_open.is_some());
-
-        // closing chrome does not affect vscode
-        let (chrome_id, _) = chrome_open.unwrap();
-        db.close_tab_session(chrome_id, now + 10, 10).unwrap();
-
-        assert!(db.get_open_tab_session_for_source("chrome").unwrap().is_none());
-        assert!(db.get_open_tab_session_for_source("vscode").unwrap().is_some());
-    }
-
-    #[test]
     fn test_default_block_categories_seeded() {
         let (db, _dir) = create_test_db();
         let categories = db.get_block_categories().unwrap();
@@ -1246,20 +862,61 @@ mod tests {
     }
 
     #[test]
-    fn test_category_usage_counts_tabs_and_apps() {
+    fn test_x_keyword_does_not_match_windows_explorer() {
         let (db, _dir) = create_test_db();
         let now = chrono::Utc::now().timestamp();
 
-        db.insert_tab_session(&TabSession {
+        // "Windows Explorer" contains the letter 'x' — plain substring matching
+        // against the Social Media category's "x" app_keyword would wrongly count
+        // this as Social Media usage.
+        db.insert_app_session(&AppSession {
             id: None,
-            source: "chrome".to_string(),
-            tab_url: "https://instagram.com/direct".to_string(),
-            tab_title: "Instagram".to_string(),
+            app_name: "Windows Explorer".to_string(),
+            window_title: None,
+            start_time: now,
+            end_time: Some(now + 300),
+            duration_seconds: 300,
+        })
+        .unwrap();
+
+        let usages = db.get_category_usage_today().unwrap();
+        let social = usages
+            .iter()
+            .find(|usage| usage.category_name == "Social Media")
+            .unwrap();
+
+        assert_eq!(social.used_seconds, 0);
+    }
+
+    #[test]
+    fn test_x_keyword_still_matches_x_taskbar_app() {
+        let (db, _dir) = create_test_db();
+        let now = chrono::Utc::now().timestamp();
+
+        db.insert_app_session(&AppSession {
+            id: None,
+            app_name: "X".to_string(),
+            window_title: Some("Home / X".to_string()),
             start_time: now,
             end_time: Some(now + 120),
             duration_seconds: 120,
         })
         .unwrap();
+
+        let usages = db.get_category_usage_today().unwrap();
+        let social = usages
+            .iter()
+            .find(|usage| usage.category_name == "Social Media")
+            .unwrap();
+
+        assert_eq!(social.used_seconds, 120);
+    }
+
+    #[test]
+    fn test_category_usage_counts_apps() {
+        let (db, _dir) = create_test_db();
+        let now = chrono::Utc::now().timestamp();
+
         db.insert_app_session(&AppSession {
             id: None,
             app_name: "Discord".to_string(),
@@ -1276,82 +933,6 @@ mod tests {
             .find(|usage| usage.category_name == "Social Media")
             .unwrap();
 
-        assert_eq!(social.used_seconds, 180);
-    }
-
-    #[test]
-    fn test_evaluate_tab_block_after_limit_exceeded() {
-        let (db, _dir) = create_test_db();
-        let now = chrono::Utc::now().timestamp();
-        let mut social = db
-            .get_block_categories()
-            .unwrap()
-            .into_iter()
-            .find(|category| category.name == "Social Media")
-            .unwrap();
-        social.daily_limit_minutes = 1;
-        db.upsert_block_category(&social).unwrap();
-
-        db.insert_tab_session(&TabSession {
-            id: None,
-            source: "chrome".to_string(),
-            tab_url: "https://x.com/home".to_string(),
-            tab_title: "X".to_string(),
-            start_time: now,
-            end_time: Some(now + 60),
-            duration_seconds: 60,
-        })
-        .unwrap();
-
-        let decision = db
-            .evaluate_tab_block("https://instagram.com/reels", "Instagram")
-            .unwrap();
-
-        assert!(decision.blocked);
-        assert_eq!(decision.category_name, Some("Social Media".to_string()));
-    }
-
-    #[test]
-    fn test_evaluate_tab_block_respects_manual_pause() {
-        let (db, _dir) = create_test_db();
-        let now = chrono::Utc::now().timestamp();
-        let mut social = db
-            .get_block_categories()
-            .unwrap()
-            .into_iter()
-            .find(|category| category.name == "Social Media")
-            .unwrap();
-        social.daily_limit_minutes = 1;
-        db.upsert_block_category(&social).unwrap();
-        db.set_block_category_paused(social.id.unwrap(), true).unwrap();
-
-        db.insert_tab_session(&TabSession {
-            id: None,
-            source: "chrome".to_string(),
-            tab_url: "https://reddit.com/r/rust".to_string(),
-            tab_title: "Reddit".to_string(),
-            start_time: now,
-            end_time: Some(now + 120),
-            duration_seconds: 120,
-        })
-        .unwrap();
-
-        let decision = db
-            .evaluate_tab_block("https://reddit.com/r/games", "Reddit")
-            .unwrap();
-
-        assert!(!decision.blocked);
-    }
-
-    #[test]
-    fn test_domain_keyword_matches_subdomain() {
-        assert!(contains_domain_keyword(
-            Some("mobile.twitter.com"),
-            &[String::from("twitter.com")]
-        ));
-        assert!(!contains_domain_keyword(
-            Some("notwitter.com"),
-            &[String::from("twitter.com")]
-        ));
+        assert_eq!(social.used_seconds, 60);
     }
 }
