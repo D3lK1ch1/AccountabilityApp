@@ -14,7 +14,6 @@ describe('useAppStore', () => {
       currentWindowTitle: null,
       stats: null,
       sessions: [],
-      tabSessions: [],
       blockedApps: [],
       blockCategories: [],
       categoryUsage: [],
@@ -31,7 +30,6 @@ describe('useAppStore', () => {
       expect(state.currentApp).toBe(null);
       expect(state.stats).toBe(null);
       expect(state.sessions).toEqual([]);
-      expect(state.tabSessions).toEqual([]);
       expect(state.blockCategories).toEqual([]);
       expect(state.categoryUsage).toEqual([]);
       expect(state.isExpanded).toBe(true);
@@ -168,42 +166,6 @@ describe('useAppStore', () => {
       await useAppStore.getState().refreshBlockedApps();
       
       expect(useAppStore.getState().blockedApps).toEqual(mockBlockedApps);
-    });
-  });
-
-  describe('tab sessions', () => {
-    test('refreshTabSessions updates tabSessions from API', async () => {
-      const mockTabSessions = [
-        {
-          id: 1,
-          source: 'chrome',
-          tab_url: 'https://example.com',
-          tab_title: 'Example',
-          start_time: Date.now(),
-          end_time: null,
-          duration_seconds: 0,
-        },
-      ];
-
-      const { invoke } = await import('@tauri-apps/api/core');
-      (invoke as ReturnType<typeof vi.fn>).mockResolvedValueOnce(mockTabSessions);
-
-      await useAppStore.getState().refreshTabSessions();
-
-      expect(useAppStore.getState().tabSessions).toEqual(mockTabSessions);
-    });
-
-    test('refreshTabSessions leaves tabSessions unchanged on error', async () => {
-      useAppStore.setState({ tabSessions: [] });
-      const consoleSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
-
-      const { invoke } = await import('@tauri-apps/api/core');
-      (invoke as ReturnType<typeof vi.fn>).mockRejectedValueOnce(new Error('backend error'));
-
-      await expect(useAppStore.getState().refreshTabSessions()).resolves.toBeUndefined();
-
-      expect(useAppStore.getState().tabSessions).toEqual([]);
-      consoleSpy.mockRestore();
     });
   });
 
