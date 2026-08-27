@@ -20,6 +20,7 @@ struct AppState {
     db: Arc<Database>,
     tracker: Arc<Mutex<Option<ActivityTracker>>>,
     stop_tracker_tx: Arc<Mutex<Option<tokio::sync::mpsc::Sender<()>>>>,
+    launched_at: i64,
 }
 
 fn db_err(e: database::DatabaseError) -> String {
@@ -160,10 +161,14 @@ struct ReportResult {
 #[tauri::command]
 async fn generate_session_report(state: State<'_, AppState>) -> Result<ReportResult, String> {
     let now = chrono::Utc::now().timestamp();
-    let since = match state.db.get_setting("last_report_generated_at").map_err(db_err)? {
-        Some(v) => v.parse::<i64>().unwrap_or_else(|_| database::today_start_timestamp()),
-        None => database::today_start_timestamp(),
+    let checkpoint = match state.db.get_setting("last_report_generated_at").map_err(db_err)? {
+        Some(v) => v.parse::<i64>().unwrap_or(state.launched_at),
+        None => state.launched_at,
     };
+    // A checkpoint from a previous run can be days stale if no report was
+    // generated before the app was closed — floor it at this run's launch
+    // time so a report never claims to cover time before you opened the app.
+    let since = checkpoint.max(state.launched_at);
 
     let app_sessions = state.db.get_sessions_since(since).map_err(db_err)?;
 
@@ -293,20 +298,11 @@ async fn show_dashboard(app: AppHandle) -> Result<(), String> {
     Ok(())
 }
 
-#[tauri::command]
-async fn hide_to_tray(app: AppHandle) -> Result<(), String> {
-    if let Some(window) = app.get_webview_window("main") {
-        window.hide().map_err(|e| e.to_string())?;
-    }
-    Ok(())
-}
-
 fn setup_tray(app: &AppHandle) -> Result<(), Box<dyn std::error::Error>> {
     let show_item = MenuItem::with_id(app, "show", "Show Dashboard", true, None::<&str>)?;
-    let hide_item = MenuItem::with_id(app, "hide", "Hide to Tray", true, None::<&str>)?;
     let quit_item = MenuItem::with_id(app, "quit", "Quit", true, None::<&str>)?;
 
-    let menu = Menu::with_items(app, &[&show_item, &hide_item, &quit_item])?;
+    let menu = Menu::with_items(app, &[&show_item, &quit_item])?;
 
     let icon = tauri::image::Image::from_bytes(include_bytes!("../icons/icon.png"))?;
 
@@ -322,12 +318,6 @@ fn setup_tray(app: &AppHandle) -> Result<(), Box<dyn std::error::Error>> {
                         let _ = window.set_focus();
                     }
                 }
-                "hide" => {
-                    if let Some(window) = app.get_webview_window("main") {
-                        let _ = window.hide();
-                    }
-                }
-
                 "quit" => {
                     let state = app.state::<AppState>();
                     if let Ok(guard) = state.tracker.try_lock() {
@@ -349,12 +339,8 @@ fn setup_tray(app: &AppHandle) -> Result<(), Box<dyn std::error::Error>> {
             {
                 let app = tray.app_handle();
                 if let Some(window) = app.get_webview_window("main") {
-                    if window.is_visible().unwrap_or(false) {
-                        let _ = window.hide();
-                    } else {
-                        let _ = window.show();
-                        let _ = window.set_focus();
-                    }
+                    let _ = window.show();
+                    let _ = window.set_focus();
                 }
             }
         })
@@ -420,6 +406,7 @@ pub fn run() {
                 db: db.clone(),
                 tracker: Arc::new(Mutex::new(None)),
                 stop_tracker_tx: Arc::new(Mutex::new(None)),
+                launched_at: chrono::Utc::now().timestamp(),
             });
 
             setup_tray(app.handle())?;
@@ -431,11 +418,14 @@ pub fn run() {
             let app_handle = app.handle().clone();
             
             main_window.on_window_event(move |event| {
-                if let WindowEvent::CloseRequested { api, .. } = event {
-                    api.prevent_close();
-                    if let Some(window) = app_handle.get_webview_window("main") {
-                        let _ = window.hide();
+                if let WindowEvent::CloseRequested { .. } = event {
+                    let state = app_handle.state::<AppState>();
+                    if let Ok(guard) = state.tracker.try_lock() {
+                        if let Some(tracker) = guard.as_ref() {
+                            tracker.stop();
+                        }
                     }
+                    app_handle.exit(0);
                 }
             });
 
@@ -466,7 +456,6 @@ pub fn run() {
             set_widget_expanded,
             toggle_window,
             show_dashboard,
-            hide_to_tray,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

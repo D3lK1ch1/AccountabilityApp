@@ -79,13 +79,22 @@ pub fn format_report(
     } else {
         out.push_str("| Time | Duration | Source | Detail |\n");
         out.push_str("|------|----------|--------|--------|\n");
+        let mut last_date: Option<String> = None;
         for e in &entries {
             let end_str = match e.end_time {
                 Some(t) => fmt_time(t),
                 None => "open".to_string(),
             };
+            let entry_date = fmt_date(e.start_time);
+            let date_prefix = if last_date.as_deref() != Some(entry_date.as_str()) {
+                last_date = Some(entry_date.clone());
+                format!("{} ", entry_date)
+            } else {
+                String::new()
+            };
             out.push_str(&format!(
-                "| {}\u{2013}{} | {} | {} | {} |\n",
+                "| {}{}\u{2013}{} | {} | {} | {} |\n",
+                date_prefix,
                 fmt_time(e.start_time),
                 end_str,
                 fmt_duration(e.duration_seconds),
@@ -166,5 +175,32 @@ mod tests {
         let apps = vec![app_session(100, 150, "A"), app_session(150, 200, "B")];
         let report = format_report(100, 200, &apps);
         assert!(report.contains("2 entries"));
+    }
+
+    #[test]
+    fn date_shown_on_first_row_and_again_only_on_day_change() {
+        let day_one_a = 1_000;
+        let day_one_b = 2_000;
+        let day_two = 200_000; // >24h later — a different calendar date in any timezone
+
+        let apps = vec![
+            app_session(day_one_a, day_one_a + 50, "Chrome"),
+            app_session(day_one_b, day_one_b + 50, "Chrome"),
+            app_session(day_two, day_two + 50, "Chrome"),
+        ];
+        let report = format_report(day_one_a, day_two + 100, &apps);
+
+        assert!(
+            report.contains(&format!("{} {}", fmt_date(day_one_a), fmt_time(day_one_a))),
+            "first row should carry a date"
+        );
+        assert!(
+            !report.contains(&format!("{} {}", fmt_date(day_one_b), fmt_time(day_one_b))),
+            "same-day row should not repeat the date"
+        );
+        assert!(
+            report.contains(&format!("{} {}", fmt_date(day_two), fmt_time(day_two))),
+            "row on a new calendar day should carry the date again"
+        );
     }
 }
