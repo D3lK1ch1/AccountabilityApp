@@ -7,6 +7,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [Unreleased]
+
+### Added
+
+- **macOS and Linux build support** — `tauri.conf.json`'s bundle targets were hardcoded to `["nsis", "msi"]` (Windows-only installer formats), which would produce no output on any other platform; changed to `"all"` so `tauri build` emits whatever installer format fits the host OS. `Cargo.toml`'s `keyring` dependency is now gated per target (`windows-native` / `apple-native` / `sync-secret-service`) instead of a single unconditional dependency, closing the "not yet confirmed fixed" macOS keyring gap noted below in `0.2.0`. CI gained a `tauri-build-macos` job that runs a full build and uploads the resulting `.dmg`. **Not yet run on an actual Mac** — this is the config and build-pipeline side of cross-platform support; real-machine verification is still outstanding before distributing to a Mac user.
+
+### Fixed
+
+- **Report elapsed time could balloon to days if the app went untouched for a while** — `generate_session_report`'s `since` boundary came only from the persisted `last_report_generated_at` checkpoint, with no ceiling. If the app kept running in the background without a report ever being generated, the next report's footer would show real wall-clock elapsed time since that stale checkpoint — technically accurate, but confusing when read next to a Time column that only showed `HH:MM:SS` with no date, making a multi-day gap look like the same afternoon. Fixed two ways: `since` is now floored at this run's launch time (`AppState::launched_at`, stamped once at startup), so a report can never claim to cover time from before you opened the app this run; and each table row now shows its date, but only on the first row or when the date changes from the row before it, so a genuine multi-day gap is visible without cluttering every row with a redundant date.
+- **Closing the window silently kept the app running in the background** — the `CloseRequested` handler called `prevent_close()` and hid the window instead of exiting, so Alt+F4 or the taskbar's "Close window" looked like a quit but left the tracker running invisibly in the tray. Removed hide-to-tray entirely: the `hide_to_tray` command, the tray's "Hide to Tray" menu item, and the `CloseRequested` auto-hide are gone. Any close action — the widget's ✖ button, the tray's Quit item, or the native window close — now stops the tracker and exits the process the same way. The tray's remaining menu is Show / Quit only, and clicking the tray icon always shows and focuses the window rather than toggling visibility.
+
+---
+
 ## [0.2.0] — 2026-08-18
 
 ### Added
