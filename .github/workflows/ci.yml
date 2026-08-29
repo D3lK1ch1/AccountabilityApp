@@ -78,7 +78,16 @@ jobs:
           toolchain: stable
       - run: npm ci
       - run: npm run tauri build
+      - run: |
+          DMG=$(find src-tauri/target/release/bundle/dmg -name '*.dmg')
+          echo "Verifying $DMG"
+          hdiutil verify "$DMG"
+          hdiutil attach -nobrowse -noautoopen "$DMG" -mountpoint /tmp/dmg-verify
+          hdiutil detach /tmp/dmg-verify
+          shasum -a 256 "$DMG" | tee src-tauri/target/release/bundle/dmg/dmg.sha256
       - uses: actions/upload-artifact@v4
         with:
           name: macos-dmg
-          path: src-tauri/target/release/bundle/dmg/*.dmg
+          path: |
+            src-tauri/target/release/bundle/dmg/*.dmg
+            src-tauri/target/release/bundle/dmg/dmg.sha256
