@@ -27,8 +27,11 @@ jobs:
           toolchain: stable
       - run: |
           sudo apt-get update
-          sudo apt-get install -y libgtk-3-dev libwebkit2gtk-4.1-dev libappindicator3-dev librsvg2-dev patchelf libxdo-dev libssl-dev
-      - run: cd src-tauri && cargo test
+          sudo apt-get install -y libgtk-3-dev libwebkit2gtk-4.1-dev libappindicator3-dev librsvg2-dev patchelf libxdo-dev libssl-dev dbus-x11 gnome-keyring
+      - run: |
+          eval $(dbus-launch --sh-syntax)
+          gnome-keyring-daemon --unlock <<< 'ci-test-password'
+          cd src-tauri && cargo test
 
   backend-windows:
     runs-on: windows-latest
