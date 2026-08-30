@@ -96,8 +96,15 @@ fn get_or_create_key(db_path: &std::path::Path) -> Result<String, DatabaseError>
             }
             let raw : [u8; 32] = rand::random();
             let key = hex::encode(raw);
-            entry.set_password(&key).map_err(|e| DatabaseError::KeyringError(e.to_string()))?;
-            Ok(key)
+            match entry.set_password(&key) {
+                Ok(()) => Ok(key),
+                // Another thread/process may have created the entry between our NoEntry
+                // read and this write (e.g. concurrent tests sharing one keychain
+                // identifier) - re-read once rather than failing on the race.
+                Err(set_err) => entry
+                    .get_password()
+                    .map_err(|_| DatabaseError::KeyringError(set_err.to_string())),
+            }
         }
         Err(e) => Err(DatabaseError::KeyringError(e.to_string())),
     }
