@@ -111,6 +111,37 @@ Output lands in src-tauri/target/release
 
 Click on accountabilityapp.exe for the app itself.
 
+### macOS (Experimental)
+
+> **The macOS build is unsigned and experimental.** This is a free, non-commercial project without an Apple Developer ID, so macOS cannot verify who made the app. It is tested in CI but not on a physical Mac by the maintainer. Apple Silicon only — Intel Macs are not supported. Use at your own discretion; see [LICENSE.md](./LICENSE.md) for warranty terms.
+
+**First launch** — macOS will block the app with *"Apple could not verify…"*. To allow it:
+
+1. Move `Accountability App.app` from the disk image to your **Applications** folder.
+2. Open the app once and dismiss the warning.
+3. Go to **System Settings → Privacy & Security**, scroll down, and click **Open Anyway** next to the Accountability App message.
+4. Open the app again and confirm.
+
+Or, from Terminal:
+
+```bash
+xattr -dr com.apple.quarantine "/Applications/Accountability App.app"
+```
+
+**Before bypassing, verify the download** — compare the checksum against the SHA-256 in the release notes:
+
+```bash
+shasum -a 256 ~/Downloads/Accountability.App_*_aarch64.dmg
+```
+
+**After each update**, expect to:
+
+- Repeat the **Open Anyway** step — every new download is quarantined again.
+- Re-grant **Accessibility** / **Screen Recording** permissions if asked. If the app is listed but not working, remove it from the list in System Settings and add it again.
+- Click **Always Allow** when macOS asks for Keychain access to `db_key`. This is the key that decrypts your session history — denying it stops the app from reading your data.
+
+**Prefer not to bypass?** Building from source avoids the warning entirely, since locally built apps aren't quarantined. Follow [Installation](#installation), then run `npm run tauri build` and open the `.app` in `src-tauri/target/release/bundle/macos/`.
+
 ---
 
 ## Roadmap
