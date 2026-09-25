@@ -7,7 +7,23 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
-## [0.3.0] — 2026-08-29
+## [0.3.0] - 25/9/2026
+
+### Fixed
+
+- **macOS build refused to launch on Apple Silicon (#7)** — first real-hardware test of the `0.3.0` `.dmg` (macOS Tahoe 26.2, M3) was killed by the OS about two seconds after launch, before any app code ran. The system log showed `team: (null)` and `Security policy would not allow process`: the binary carried only the linker's automatic ad-hoc signature and the bundle itself was unsigned. Fixed by setting `bundle.macOS.signingIdentity` to `"-"` so `tauri build` ad-hoc signs the whole `.app`. This is a free, non-commercial project with no Apple Developer ID, so Gatekeeper's *"Apple could not verify…"* prompt still appears on first launch; the fix makes the documented **Open Anyway** bypass work, not remove it. **Pending confirmation on real Mac hardware.**
+
+### Changed
+
+- **CI publishes the macOS DMG checksum on the run summary page** — `dmg.sha256` previously stored the full CI build path next to the hash; it now stores only the filename, and the hash is also written to `$GITHUB_STEP_SUMMARY` so it can be copied into release notes without downloading the artifact.
+
+### Documentation
+
+- **README: macOS (Experimental) section** — unsigned-build disclaimer, Apple Silicon-only note, Open Anyway / `xattr` bypass steps, checksum verification, what to expect after each update (repeat bypass, re-grant permissions, allow Keychain access to `db_key`), and building from source as the option that needs no bypass.
+
+---
+
+## Session 2026-08-29
 
 ### Added
 
