@@ -84,7 +84,15 @@ jobs:
           hdiutil verify "$DMG"
           hdiutil attach -nobrowse -noautoopen "$DMG" -mountpoint /tmp/dmg-verify
           hdiutil detach /tmp/dmg-verify
-          shasum -a 256 "$DMG" | tee src-tauri/target/release/bundle/dmg/dmg.sha256
+          cd "$(dirname "$DMG")"
+          HASH=$(shasum -a 256 "$(basename "$DMG")" | tee dmg.sha256 | cut -d' ' -f1)
+          {
+            echo "### macOS DMG checksum"
+            echo "Paste into the release notes:"
+            echo '```'
+            echo "SHA-256: $HASH"
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
       - uses: actions/upload-artifact@v4
         with:
           name: macos-dmg
