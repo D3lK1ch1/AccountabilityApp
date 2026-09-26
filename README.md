@@ -1,8 +1,8 @@
 # Accountability App
 
-A privacy-first Windows desktop widget that tracks your app usage and helps you stay aware of your digital habits. All data is stored locally on your machine — no cloud, no telemetry.
+A privacy-first desktop widget that tracks your app usage and helps you stay aware of your digital habits. All data is stored locally on your machine — no cloud, no telemetry.
 
-> **Status:** Pre-beta (v0.2.0). Activity tracking, browser tab tracking, and category-based quota blocking work; per-app blocking UI is on the roadmap (due to determination to annoy people with rickrolling and stock photo adsz).
+> **Status:** Pre-beta (v0.3.0). Activity tracking, browser tab tracking, and category-based quota blocking work; per-app blocking UI is on the roadmap (due to determination to annoy people with rickrolling and stock photo adsz).
 
 ---
 
@@ -23,7 +23,7 @@ Built with a Rust backend for system-level activity tracking and a React fronten
 - [x] First-run consent modal for privacy confirmation
 - [x] Clear all session data at any time
 - [ ] Browser tab tracking via a Chrome extension, bridged over a local WebSocket server (rolled back, needing to understand further with potential alternatives)
-- [x] Category-based quota blocking (Social Media, Games, ...) with daily limits, manual pause, and a block overlay/deterrent popups on the tracked tab
+- [x] Category-based quota blocking (Social Media, Games, ...) with daily limits and manual pause
 - [x] Downloadable Markdown session reports, saved via a native Save-As dialog
 - [ ] App blocking UI *(backend commands ready, UI pending)*
 
@@ -128,7 +128,7 @@ Or, from Terminal:
 xattr -dr com.apple.quarantine "/Applications/Accountability App.app"
 ```
 
-**Before bypassing, verify the download** — compare the checksum against the SHA-256 in the release notes:
+**Before bypassing, verify the download** — run this in Terminal and check the output matches the `sha256:` shown next to the `.dmg` on the [release page](https://github.com/D3lK1ch1/AccountabilityApp/releases):
 
 ```bash
 shasum -a 256 ~/Downloads/Accountability.App_*_aarch64.dmg
